@@ -1,0 +1,9 @@
+{
+  "name": "sticker-meme-maker-api",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "dependencies": {
+    "@vercel/blob": "^1.1.1"
+  }
+}
