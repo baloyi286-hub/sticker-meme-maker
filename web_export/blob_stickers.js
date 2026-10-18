@@ -46,7 +46,6 @@ window.uploadSharedSticker = async function (base64) {
     access: 'public',
     handleUploadUrl: '/api/stickers',
     contentType: type,
-    addRandomSuffix: false,
   });
   return JSON.stringify({ pathname: blob.pathname, url: blob.url });
 };
