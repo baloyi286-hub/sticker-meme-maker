@@ -207,6 +207,23 @@ class _MemeEditorState extends State<MemeEditor> {
     );
   }
 
+  void chooseTextColor() {
+    const colors = <Color>[
+      Colors.black, Colors.white, Colors.red, Colors.orange,
+      Colors.yellow, Colors.green, Colors.blue, Colors.purple, Colors.pink,
+    ];
+    showModalBottomSheet<void>(context: context, builder: (sheetContext) =>
+      SafeArea(child: Padding(padding: const EdgeInsets.all(20),
+        child: Wrap(spacing: 14, runSpacing: 14, children: [
+          for (final color in colors)
+            InkWell(onTap: () {
+              setState(() => textColor = color);
+              Navigator.pop(sheetContext);
+            }, child: CircleAvatar(backgroundColor: color, radius: 22,
+              child: textColor == color ? const Icon(Icons.check, color: Colors.grey) : null)),
+        ]))));
+  }
+
   void pasteSticker() {
     message('Copy an image, then press Ctrl+V (or Cmd+V). On iPhone, use Add sticker.');
   }
@@ -414,8 +431,7 @@ class _MemeEditorState extends State<MemeEditor> {
           OutlinedButton(onPressed: () => setState(() => background =
             background == Colors.white ? Colors.black : Colors.white),
             child: const Text('Black / White BG')),
-          OutlinedButton(onPressed: () => setState(() => textColor =
-            textColor == Colors.white ? Colors.black : Colors.white),
+          OutlinedButton(onPressed: chooseTextColor,
             child: const Text('Text colour')),
           OutlinedButton(onPressed: selected == null ? null : () => setState(() {
             layers.removeAt(selected!);
