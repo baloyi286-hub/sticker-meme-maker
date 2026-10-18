@@ -4,7 +4,8 @@
   "version": "1.0.0",
   "type": "module",
   "dependencies": {
-    "@vercel/blob": "^1.1.1"
+    "@vercel/blob": "^1.1.1",
+    "webpxmux": "0.0.2"
   },
   "devDependencies": {
     "esbuild": "^0.25.0"
