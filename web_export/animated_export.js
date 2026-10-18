@@ -76,7 +76,7 @@ window.exportAnimatedMeme = async function (json) {
       const tx = (project.captionX + (project.canvasWidth - project.captionX) / 2) * scale;
       const ty = top + project.captionY * scale;
       const maxWidth = (project.canvasWidth - project.captionX) * scale;
-      const words = (project.caption || '').split(/\\s+/);
+      const words = (project.caption || '').split(/\s+/);
       let line = '', row = 0;
       for (const word of words) {
         const next = line ? line + ' ' + word : word;
