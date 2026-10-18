@@ -69,11 +69,153 @@ async function prepareSticker(layer) {
   return { frameAt() { return bitmap; }, close() { bitmap.close(); } };
 }
 
+// On iOS, ImageDecoder is unavailable even in Chrome. Record the browser's
+// native animated image rendering rather than requiring that API.
+function isMobilePlatform() {
+  return /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) ||
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+}
+
+function supportedMp4RecorderType() {
+  if (!('MediaRecorder' in window) || !('isTypeSupported' in MediaRecorder)) return null;
+  return ['video/mp4;codecs=avc1.42E01E', 'video/mp4;codecs=avc1', 'video/mp4']
+    .find(type => MediaRecorder.isTypeSupported(type)) || null;
+}
+
+async function prepareNativeSticker(layer) {
+  const bytes = stickerBytes(layer.bytes);
+  const type = imageMime(bytes);
+  const url = URL.createObjectURL(new Blob([bytes], { type }));
+  const img = new Image();
+  img.src = url;
+  try {
+    await img.decode();
+  } catch (error) {
+    URL.revokeObjectURL(url);
+    throw new Error('Could not load sticker animation: ' + error);
+  }
+  return { frameAt() { return img; }, close() { URL.revokeObjectURL(url); } };
+}
+
+async function recordMobileMeme(project, render) {
+  const mimeType = supportedMp4RecorderType();
+  if (!mimeType) throw new Error('This mobile browser cannot record MP4. Try updating iOS.');
+  const width = 720, height = 1280, fps = 30, seconds = 6;
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  if (typeof canvas.captureStream !== 'function') {
+    throw new Error('This mobile browser cannot capture the meme canvas.');
+  }
+  const ctx = canvas.getContext('2d', { alpha: false });
+  if (!ctx) throw new Error('Could not initialize mobile video canvas.');
+  const stickers = [];
+  let stream, recorder;
+  try {
+    for (const layer of project.layers) stickers.push(await prepareNativeSticker(layer));
+    // Keep a live rendering loop; browsers advance GIF/WebP HTMLImageElements
+    // with their own animation clocks. Unlike ImageDecoder this needs no WebCodecs.
+    const draw = () => render(ctx, project, stickers, performance.now() * 1000, width, height);
+    draw();
+    stream = canvas.captureStream(fps);
+    recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 2500000 });
+    const chunks = [];
+    const completed = new Promise((resolve, reject) => {
+      recorder.ondataavailable = event => { if (event.data.size) chunks.push(event.data); };
+      recorder.onerror = event => reject(event.error || new Error('Mobile MP4 recording failed.'));
+      recorder.onstop = () => chunks.length ? resolve(new Blob(chunks, { type: 'video/mp4' })) :
+        reject(new Error('Mobile recorder produced an empty video.'));
+    });
+    recorder.start();
+    const start = performance.now();
+    await new Promise((resolve, reject) => {
+      function tick(now) {
+        if (recorder.state === 'inactive') return reject(new Error('Recording stopped unexpectedly.'));
+        draw();
+        if (now - start < seconds * 1000) requestAnimationFrame(tick);
+        else resolve();
+      }
+      requestAnimationFrame(tick);
+    });
+    recorder.stop();
+    const blob = await completed;
+    downloadMp4(blob);
+  } finally {
+    if (recorder && recorder.state !== 'inactive') recorder.stop();
+    if (stream) stream.getTracks().forEach(track => track.stop());
+    stickers.forEach(sticker => sticker.close());
+  }
+}
+
+function downloadMp4(blob) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'animated-meme-whatsapp-status.mp4';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
+}
+
+function drawMemeFrame(ctx, project, stickers, timeUs, width, height) {
+  const square = width;
+  const top = (height - square) / 2;
+  const editorWidth = project.canvasWidth || 400;
+  const scale = square / editorWidth;
+  const font = (project.captionFont || 'Roboto').replace(/"/g, '');
+  const bg = '#' + (project.background >>> 0).toString(16).padStart(8, '0').slice(2);
+  const fg = '#' + (project.textColor >>> 0).toString(16).padStart(8, '0').slice(2);
+  ctx.fillStyle = '#000000';
+  ctx.fillRect(0, 0, width, height);
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, top, square, square);
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(0, top, square, square);
+  ctx.clip();
+  project.layers.forEach((layer, index) => {
+    const x = layer.x * scale, y = top + layer.y * scale;
+    const size = layer.size * scale;
+    ctx.save();
+    ctx.translate(x + size / 2, y + size / 2);
+    ctx.rotate(layer.angle || 0);
+    ctx.drawImage(stickers[index].frameAt(timeUs), -size / 2, -size / 2, size, size);
+    ctx.restore();
+  });
+  ctx.fillStyle = fg;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'top';
+  const textSize = (project.captionSize || 28) * scale;
+  ctx.font = '900 ' + textSize + 'px "' + font + '"';
+  const tx = (project.captionX + (editorWidth - project.captionX) / 2) * scale;
+  const ty = top + project.captionY * scale;
+  const maxWidth = Math.max(1, (editorWidth - project.captionX) * scale);
+  const words = (project.caption || '').split(/\\s+/);
+  let line = '', row = 0;
+  for (const word of words) {
+    const next = line ? line + ' ' + word : word;
+    if (line && ctx.measureText(next).width > maxWidth) {
+      ctx.fillText(line, tx, ty + row * textSize * 1.2);
+      row++; line = word;
+    } else line = next;
+  }
+  if (line) ctx.fillText(line, tx, ty + row * textSize * 1.2);
+  ctx.restore();
+}
+
 window.exportAnimatedMeme = async function (json) {
+  const project = JSON.parse(json);
+  const needsNativeDecoder = project.layers.some(layer => {
+    const type = imageMime(stickerBytes(layer.bytes));
+    return type === 'image/webp' || type === 'image/gif';
+  });
+  if (isMobilePlatform() && needsNativeDecoder && !('ImageDecoder' in window)) {
+    return recordMobileMeme(project, drawMemeFrame);
+  }
   if (!('VideoEncoder' in window) || !('VideoFrame' in window)) {
     throw new Error('MP4 export requires WebCodecs in a recent Chrome or Edge browser.');
   }
-  const project = JSON.parse(json);
   const width = 720, height = 1280, fps = 30, seconds = 6;
   const codec = 'avc1.42001f';
   const support = await VideoEncoder.isConfigSupported({
@@ -105,55 +247,10 @@ window.exportAnimatedMeme = async function (json) {
     canvas.width = width; canvas.height = height;
     const ctx = canvas.getContext('2d', { alpha: false });
     if (!ctx) throw new Error('Could not create video drawing canvas.');
-    const square = width;
-    const top = (height - square) / 2;
-    const editorWidth = project.canvasWidth || 400;
-    const scale = square / editorWidth;
-    const font = (project.captionFont || 'Roboto').replace(/"/g, '');
-    const bg = '#' + (project.background >>> 0).toString(16).padStart(8, '0').slice(2);
-    const fg = '#' + (project.textColor >>> 0).toString(16).padStart(8, '0').slice(2);
-
     for (let i = 0; i < fps * seconds; i++) {
       if (failure) throw failure;
       const timeUs = Math.round(i * 1000000 / fps);
-      // Black letterboxing outside the square meme for portrait WhatsApp Status.
-      ctx.fillStyle = '#000000';
-      ctx.fillRect(0, 0, width, height);
-      // Preserve the editor's chosen background only within its square canvas.
-      ctx.fillStyle = bg;
-      ctx.fillRect(0, top, square, square);
-      ctx.save();
-      ctx.beginPath();
-      ctx.rect(0, top, square, square);
-      ctx.clip();
-      project.layers.forEach((layer, index) => {
-        const x = layer.x * scale, y = top + layer.y * scale;
-        const size = layer.size * scale;
-        ctx.save();
-        ctx.translate(x + size / 2, y + size / 2);
-        ctx.rotate(layer.angle || 0);
-        ctx.drawImage(stickers[index].frameAt(timeUs), -size / 2, -size / 2, size, size);
-        ctx.restore();
-      });
-      ctx.fillStyle = fg;
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'top';
-      const textSize = (project.captionSize || 28) * scale;
-      ctx.font = '900 ' + textSize + 'px "' + font + '"';
-      const tx = (project.captionX + (editorWidth - project.captionX) / 2) * scale;
-      const ty = top + project.captionY * scale;
-      const maxWidth = Math.max(1, (editorWidth - project.captionX) * scale);
-      const words = (project.caption || '').split(/\s+/);
-      let line = '', row = 0;
-      for (const word of words) {
-        const next = line ? line + ' ' + word : word;
-        if (line && ctx.measureText(next).width > maxWidth) {
-          ctx.fillText(line, tx, ty + row * textSize * 1.2);
-          row++; line = word;
-        } else line = next;
-      }
-      if (line) ctx.fillText(line, tx, ty + row * textSize * 1.2);
-      ctx.restore();
+      drawMemeFrame(ctx, project, stickers, timeUs, width, height);
       const frame = new VideoFrame(canvas, { timestamp: timeUs });
       encoder.encode(frame, { keyFrame: i % (fps * 2) === 0 });
       frame.close();
@@ -163,14 +260,7 @@ window.exportAnimatedMeme = async function (json) {
     if (failure) throw failure;
     muxer.finalize();
     const blob = new Blob([target.buffer], { type: 'video/mp4' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'animated-meme-whatsapp-status.mp4';
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 60000);
+    downloadMp4(blob);
   } finally {
     encoder.close();
     for (const sticker of stickers) sticker.close();
