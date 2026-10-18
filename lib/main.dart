@@ -8,6 +8,7 @@ import 'dart:ui' as ui;
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'sticker_image_editor.dart';
 
 void main() => runApp(const MemeApp());
 
@@ -90,17 +91,22 @@ class _MemeEditorState extends State<MemeEditor> {
     reader.readAsArrayBuffer(file);
     await reader.onLoad.first;
     final result = reader.result;
-    if (result is ByteBuffer) addSticker(result.asUint8List(), file.name);
-    else if (result is Uint8List) addSticker(result, file.name);
+    if (result is ByteBuffer) await addSticker(result.asUint8List(), file.name);
+    else if (result is Uint8List) await addSticker(result, file.name);
   }
 
-  void addSticker(Uint8List bytes, String name) {
+  Future<void> addSticker(Uint8List bytes, String name) async {
     if (bytes.lengthInBytes > 12 * 1024 * 1024) {
       message('Sticker exceeds 12 MB limit');
       return;
     }
+    final edited = await showDialog<Uint8List>(
+      context: context,
+      builder: (_) => StickerImageEditor(source: bytes),
+    );
+    if (edited == null || !mounted) return;
     setState(() {
-      layers.add(StickerLayer(bytes, name: name));
+      layers.add(StickerLayer(edited, name: name));
       selected = layers.length - 1;
     });
   }
@@ -114,7 +120,7 @@ class _MemeEditorState extends State<MemeEditor> {
     );
     if (result == null) return;
     for (final file in result.files) {
-      if (file.bytes != null) addSticker(file.bytes!, file.name);
+      if (file.bytes != null) await addSticker(file.bytes!, file.name);
     }
   }
 
@@ -276,6 +282,18 @@ class _MemeEditorState extends State<MemeEditor> {
             icon: const Icon(Icons.add_photo_alternate), label: const Text('Add sticker')),
           const SizedBox(width: 8),
           OutlinedButton(onPressed: pasteSticker, child: const Text('Paste')),
+          OutlinedButton(onPressed: selected == null ? null : () async {
+            final index = selected!;
+            final edited = await showDialog<Uint8List>(context: context,
+              builder: (_) => StickerImageEditor(source: layers[index].bytes));
+            if (edited != null && mounted && index < layers.length) {
+              setState(() {
+                final original = layers[index];
+                layers[index] = StickerLayer(edited, name: original.name,
+                  x: original.x, y: original.y, size: original.size, angle: original.angle);
+              });
+            }
+          }, child: const Text('Crop / Remove BG')),
           OutlinedButton(onPressed: selected == null ? null : () => setState(() => layers[selected!].size += 20), child: const Text('Larger')),
           OutlinedButton(onPressed: selected == null ? null : () => setState(() => layers[selected!].size = (layers[selected!].size - 20).clamp(40, 500)), child: const Text('Smaller')),
           OutlinedButton(onPressed: selected == null ? null : () => setState(() => layers[selected!].angle += math.pi / 8), child: const Text('Rotate')),
