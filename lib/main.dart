@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:html' as html;
+import 'dart:js_util' as js_util;
 import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
@@ -62,6 +63,8 @@ class _MemeEditorState extends State<MemeEditor> {
   String captionFont = 'Roboto';
   Color textColor = Colors.black;
   int? selected;
+  bool exportingMp4 = false;
+  double canvasWidth = 400;
   String? projectName;
   StreamSubscription<html.Event>? pasteSubscription;
   static const storageKey = 'sticker_meme_projects_v1';
@@ -235,6 +238,21 @@ class _MemeEditorState extends State<MemeEditor> {
     Future<void>.delayed(const Duration(seconds: 2), () => html.Url.revokeObjectUrl(url));
   }
 
+  Future<void> exportAnimatedMp4() async {
+    if (exportingMp4) return;
+    setState(() => exportingMp4 = true);
+    try {
+      final data = snapshot()..['canvasWidth'] = canvasWidth;
+      await js_util.promiseToFuture<Object?>(js_util.callMethod(
+        html.window, 'exportAnimatedMeme', [jsonEncode(data)]));
+      message('MP4 downloaded. Ready for WhatsApp Status.');
+    } catch (error) {
+      message('Unable to export MP4: $error');
+    } finally {
+      if (mounted) setState(() => exportingMp4 = false);
+    }
+  }
+
   Future<void> exportPng() async {
     try {
       setState(() => selected = null);
@@ -350,8 +368,9 @@ class _MemeEditorState extends State<MemeEditor> {
     body: SafeArea(child: Column(children: [
       Expanded(child: Center(child: AspectRatio(
         aspectRatio: 1,
-        child: LayoutBuilder(builder: (context, constraints) =>
-          RepaintBoundary(key: boundary, child: Container(
+        child: LayoutBuilder(builder: (context, constraints) {
+          canvasWidth = constraints.maxWidth;
+          return RepaintBoundary(key: boundary, child: Container(
             color: background,
             child: Stack(clipBehavior: Clip.hardEdge, children: [
               for (var i = 0; i < layers.length; i++)
@@ -392,8 +411,8 @@ class _MemeEditorState extends State<MemeEditor> {
                 ),
               ),
             ]),
-          )),
-        ),
+          ));
+        }),
       ))),
       Padding(padding: const EdgeInsets.all(12), child: Column(children: [
         TextField(controller: caption, focusNode: focus,
@@ -438,6 +457,10 @@ class _MemeEditorState extends State<MemeEditor> {
             selected = null;
           }), child: const Text('Delete')),
           FilledButton(onPressed: exportPng, child: const Text('Download PNG')),
+          FilledButton.icon(onPressed: exportingMp4 ? null : exportAnimatedMp4,
+            icon: exportingMp4 ? const SizedBox(width: 16, height: 16,
+              child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.movie),
+            label: Text(exportingMp4 ? 'Exporting MP4...' : 'Export Animated Meme → MP4')),
         ])),
       ])),
     ])),
