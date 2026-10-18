@@ -1,4 +1,5 @@
 import 'dart:typed_data';
+import 'dart:html' as html;
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
@@ -60,10 +61,12 @@ class _MemeEditorState extends State<MemeEditor> {
     final image = await render.toImage(pixelRatio: 2);
     final data = await image.toByteData(format: ui.ImageByteFormat.png);
     if (data == null || !mounted) return;
-    // Export bytes are ready; platform-specific save/share will be added next.
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('PNG rendered. File download is not wired yet.')),
-    );
+    final blob = html.Blob([data.buffer.asUint8List()],'image/png');
+    final url = html.Url.createObjectUrlFromBlob(blob);
+    html.AnchorElement(href: url)
+      ..setAttribute('download', 'sticker-meme.png')
+      ..click();
+    html.Url.revokeObjectUrl(url);
   }
 
   @override
@@ -117,7 +120,7 @@ class _MemeEditorState extends State<MemeEditor> {
           OutlinedButton(onPressed: selected == null ? null : () => setState(() => layers[selected!].size += 20), child: const Text('Larger')),
           OutlinedButton(onPressed: selected == null ? null : () => setState(() => layers[selected!].size = (layers[selected!].size - 20).clamp(40, 500)), child: const Text('Smaller')),
           OutlinedButton(onPressed: selected == null ? null : () => setState(() { layers.removeAt(selected!); selected = null; }), child: const Text('Delete')),
-          FilledButton(onPressed: exportPng, child: const Text('Render PNG')),
+          FilledButton(onPressed: exportPng, child: const Text('Download PNG')),
         ]),
       ])),
     ])),
