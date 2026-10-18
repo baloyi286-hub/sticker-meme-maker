@@ -22,6 +22,8 @@ jobs:
         run: |
           node --check api/stickers.js
           node --check web_export/animated_export.js
+          ./node_modules/.bin/esbuild web_export/webp_decoder.js --bundle --format=iife --platform=browser --target=es2020 --outfile=/tmp/webp_decoder.js
+          test -s node_modules/webpxmux/dist/webpxmux.wasm
           ./node_modules/.bin/esbuild web_export/blob_stickers.js --bundle --format=iife --platform=browser --target=es2020 --outfile=/tmp/blob_stickers.js
       - name: Generate Flutter web platform files
         run: flutter create --platforms=web --project-name=sticker_meme_maker .
