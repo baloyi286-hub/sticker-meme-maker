@@ -84,6 +84,7 @@ class _MemeEditorState extends State<MemeEditor> {
         }
       }
     });
+    unawaited(syncLocalStickers());
   }
 
   void message(String value) {
@@ -154,6 +155,25 @@ class _MemeEditorState extends State<MemeEditor> {
     }
   }
 
+  Future<void> syncLocalStickers() async {
+    final pending = libraryItems();
+    if (pending.isEmpty) return;
+    final remaining = <Map<String, dynamic>>[];
+    for (final item in pending) {
+      try {
+        await js_util.promiseToFuture<Object?>(js_util.callMethod(
+          html.window, 'uploadSharedSticker', [item['bytes'] as String]));
+      } catch (_) {
+        remaining.add(item);
+      }
+    }
+    try {
+      html.window.localStorage[stickerLibraryKey] = jsonEncode(remaining);
+    } catch (_) {
+      // Local storage may be unavailable in private browsing.
+    }
+  }
+
   Future<void> uploadStickerToBlob(Uint8List bytes, String name) async {
     try {
       await js_util.promiseToFuture<Object?>(js_util.callMethod(
@@ -166,6 +186,7 @@ class _MemeEditorState extends State<MemeEditor> {
   }
 
   Future<List<Map<String, dynamic>>> sharedStickers() async {
+    await syncLocalStickers();
     final items = <Map<String, dynamic>>[];
     String cursor = '';
     do {
