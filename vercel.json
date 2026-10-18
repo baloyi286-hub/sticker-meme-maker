@@ -1,0 +1,1 @@
+{"buildCommand":"bash scripts/build-web.sh","outputDirectory":"build/web","framework":null,"installCommand":"echo Flutter installed by build script"}
