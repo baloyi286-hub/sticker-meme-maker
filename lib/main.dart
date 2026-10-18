@@ -116,7 +116,10 @@ class _MemeEditorState extends State<MemeEditor> {
       message('Sticker exceeds 12 MB limit');
       return;
     }
-    if (saveToLibrary) unawaited(uploadStickerToBlob(bytes, name));
+    if (saveToLibrary) {
+      saveStickerToLibrary(bytes, name);
+      unawaited(uploadStickerToBlob(bytes, name));
+    }
     setState(() {
       layers.add(StickerLayer(bytes, name: name));
       selected = layers.length - 1;
@@ -183,10 +186,12 @@ class _MemeEditorState extends State<MemeEditor> {
   Future<void> uploadStickerToBlob(Uint8List bytes, String name) async {
     try {
       await uploadSharedSticker(base64Encode(bytes).toJS).toDart;
+      final encoded = base64Encode(bytes);
+      final remaining = libraryItems()..removeWhere((item) => item['bytes'] == encoded);
+      html.window.localStorage[stickerLibraryKey] = jsonEncode(remaining);
+      message('Sticker saved to shared gallery.');
     } catch (error) {
-      // Keep a local copy for retry if the user is offline or Blob is unavailable.
-      saveStickerToLibrary(bytes, name);
-      message('Sticker added locally, but cloud upload failed: $error');
+      message('Cloud upload failed; sticker kept locally for retry: $error');
     }
   }
 
