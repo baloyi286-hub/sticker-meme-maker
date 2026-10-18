@@ -16,6 +16,12 @@ jobs:
         with:
           channel: stable
           cache: true
+      - name: Install Blob API dependencies
+        run: npm install --no-audit --no-fund
+      - name: Validate and bundle Blob client
+        run: |
+          node --check api/stickers.js
+          ./node_modules/.bin/esbuild web_export/blob_stickers.js --bundle --format=iife --platform=browser --target=es2020 --outfile=/tmp/blob_stickers.js
       - name: Generate Flutter web platform files
         run: flutter create --platforms=web --project-name=sticker_meme_maker .
       - name: Install dependencies
