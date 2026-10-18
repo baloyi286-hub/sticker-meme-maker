@@ -1,6 +1,6 @@
 // Client-side bridge between Flutter and Vercel Blob.
 // Uses short-lived upload tokens issued by /api/stickers; never exposes the store token.
-const blobSdk = () => import('https://esm.sh/@vercel/blob@1.1.1/client');
+import { upload } from '@vercel/blob/client';
 
 function decodeBase64(value) {
   const binary = atob(value);
@@ -42,7 +42,6 @@ window.uploadSharedSticker = async function (base64) {
     cursor = response.hasMore ? response.cursor : '';
   } while (cursor);
 
-  const { upload } = await blobSdk();
   const blob = await upload(pathname, new Blob([bytes], { type }), {
     access: 'public',
     handleUploadUrl: '/api/stickers',
