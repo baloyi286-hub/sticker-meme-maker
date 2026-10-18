@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:html' as html;
-import 'dart:js_util' as js_util;
+import 'dart:js_interop';
 import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
@@ -9,6 +9,13 @@ import 'dart:ui' as ui;
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+
+@JS('uploadSharedSticker')
+external JSPromise<JSString> uploadSharedSticker(JSString base64);
+@JS('listSharedStickers')
+external JSPromise<JSString> listSharedStickers(JSString cursor);
+@JS('exportAnimatedMeme')
+external JSPromise<JSAny?> exportAnimatedMemeJs(JSString json);
 
 void main() => runApp(const MemeApp());
 
@@ -161,8 +168,7 @@ class _MemeEditorState extends State<MemeEditor> {
     final remaining = <Map<String, dynamic>>[];
     for (final item in pending) {
       try {
-        await js_util.promiseToFuture<Object?>(js_util.callMethod(
-          html.window, 'uploadSharedSticker', [item['bytes'] as String]));
+        await uploadSharedSticker((item['bytes'] as String).toJS).toDart;
       } catch (_) {
         remaining.add(item);
       }
@@ -176,8 +182,7 @@ class _MemeEditorState extends State<MemeEditor> {
 
   Future<void> uploadStickerToBlob(Uint8List bytes, String name) async {
     try {
-      await js_util.promiseToFuture<Object?>(js_util.callMethod(
-        html.window, 'uploadSharedSticker', [base64Encode(bytes)]));
+      await uploadSharedSticker(base64Encode(bytes).toJS).toDart;
     } catch (error) {
       // Keep a local copy for retry if the user is offline or Blob is unavailable.
       saveStickerToLibrary(bytes, name);
@@ -190,9 +195,8 @@ class _MemeEditorState extends State<MemeEditor> {
     final items = <Map<String, dynamic>>[];
     String cursor = '';
     do {
-      final result = await js_util.promiseToFuture<Object?>(js_util.callMethod(
-        html.window, 'listSharedStickers', [cursor]));
-      final page = jsonDecode(result as String) as Map<String, dynamic>;
+      final result = (await listSharedStickers(cursor.toJS).toDart).toDart;
+      final page = jsonDecode(result) as Map<String, dynamic>;
       items.addAll((page['stickers'] as List)
         .map((item) => Map<String, dynamic>.from(item as Map)));
       cursor = page['hasMore'] == true ? (page['cursor'] as String? ?? '') : '';
@@ -311,8 +315,7 @@ class _MemeEditorState extends State<MemeEditor> {
     setState(() => exportingMp4 = true);
     try {
       final data = snapshot()..['canvasWidth'] = canvasWidth;
-      await js_util.promiseToFuture<Object?>(js_util.callMethod(
-        html.window, 'exportAnimatedMeme', [jsonEncode(data)]));
+      await exportAnimatedMemeJs(jsonEncode(data).toJS).toDart;
       message('MP4 downloaded. Ready for WhatsApp Status.');
     } catch (error) {
       message('Unable to export MP4: $error');
