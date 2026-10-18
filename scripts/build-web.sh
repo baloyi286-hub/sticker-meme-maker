@@ -9,6 +9,7 @@ flutter pub get
 flutter build web --release --pwa-strategy=offline-first
 
 cp web_export/animated_export.js build/web/animated_export.js
+cp web_export/blob_stickers.js build/web/blob_stickers.js
 python3 - <<'PY'
 from pathlib import Path
 p = Path('build/web/index.html')
