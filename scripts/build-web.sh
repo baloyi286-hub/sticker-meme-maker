@@ -7,3 +7,12 @@ flutter config --enable-web
 flutter create --platforms=web --project-name=sticker_meme_maker .
 flutter pub get
 flutter build web --release --pwa-strategy=offline-first
+
+cp web_export/animated_export.js build/web/animated_export.js
+python3 - <<'PY'
+from pathlib import Path
+p = Path('build/web/index.html')
+s = p.read_text()
+s = s.replace('</head>', '<script src="animated_export.js" defer></script>\n</head>')
+p.write_text(s)
+PY
