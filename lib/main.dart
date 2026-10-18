@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:html' as html;
+import 'dart:js_util' as js_util;
 import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
@@ -57,9 +58,13 @@ class _MemeEditorState extends State<MemeEditor> {
   final caption = TextEditingController();
   final boundary = GlobalKey();
   final focus = FocusNode();
-  Color background = const Color(0xFF232323);
-  Color textColor = Colors.white;
+  Color background = Colors.white;
+  double captionX = 12, captionY = 300, captionSize = 28;
+  String captionFont = 'Roboto';
+  Color textColor = Colors.black;
   int? selected;
+  bool exportingMp4 = false;
+  double canvasWidth = 400;
   String? projectName;
   StreamSubscription<html.Event>? pasteSubscription;
   static const storageKey = 'sticker_meme_projects_v1';
@@ -205,6 +210,23 @@ class _MemeEditorState extends State<MemeEditor> {
     );
   }
 
+  void chooseTextColor() {
+    const colors = <Color>[
+      Colors.black, Colors.white, Colors.red, Colors.orange,
+      Colors.yellow, Colors.green, Colors.blue, Colors.purple, Colors.pink,
+    ];
+    showModalBottomSheet<void>(context: context, builder: (sheetContext) =>
+      SafeArea(child: Padding(padding: const EdgeInsets.all(20),
+        child: Wrap(spacing: 14, runSpacing: 14, children: [
+          for (final color in colors)
+            InkWell(onTap: () {
+              setState(() => textColor = color);
+              Navigator.pop(sheetContext);
+            }, child: CircleAvatar(backgroundColor: color, radius: 22,
+              child: textColor == color ? const Icon(Icons.check, color: Colors.grey) : null)),
+        ]))));
+  }
+
   void pasteSticker() {
     message('Copy an image, then press Ctrl+V (or Cmd+V). On iPhone, use Add sticker.');
   }
@@ -214,6 +236,21 @@ class _MemeEditorState extends State<MemeEditor> {
     final url = html.Url.createObjectUrlFromBlob(blob);
     html.AnchorElement(href: url)..download = name..click();
     Future<void>.delayed(const Duration(seconds: 2), () => html.Url.revokeObjectUrl(url));
+  }
+
+  Future<void> exportAnimatedMp4() async {
+    if (exportingMp4) return;
+    setState(() => exportingMp4 = true);
+    try {
+      final data = snapshot()..['canvasWidth'] = canvasWidth;
+      await js_util.promiseToFuture<Object?>(js_util.callMethod(
+        html.window, 'exportAnimatedMeme', [jsonEncode(data)]));
+      message('MP4 downloaded. Ready for WhatsApp Status.');
+    } catch (error) {
+      message('Unable to export MP4: $error');
+    } finally {
+      if (mounted) setState(() => exportingMp4 = false);
+    }
   }
 
   Future<void> exportPng() async {
@@ -235,6 +272,8 @@ class _MemeEditorState extends State<MemeEditor> {
     'caption': caption.text,
     'background': background.toARGB32(),
     'textColor': textColor.toARGB32(),
+    'captionX': captionX, 'captionY': captionY,
+    'captionSize': captionSize, 'captionFont': captionFont,
     'layers': layers.map((layer) => layer.toJson()).toList(),
   };
 
@@ -267,6 +306,10 @@ class _MemeEditorState extends State<MemeEditor> {
       caption.text = data['caption'] as String? ?? '';
       background = Color(data['background'] as int);
       textColor = Color(data['textColor'] as int);
+      captionX = (data['captionX'] as num?)?.toDouble() ?? 12;
+      captionY = (data['captionY'] as num?)?.toDouble() ?? 300;
+      captionSize = (data['captionSize'] as num?)?.toDouble() ?? 28;
+      captionFont = data['captionFont'] as String? ?? 'Roboto';
       projectName = name;
       selected = null;
     });
@@ -297,6 +340,12 @@ class _MemeEditorState extends State<MemeEditor> {
     caption.clear();
     projectName = null;
     selected = null;
+    background = Colors.white;
+    textColor = Colors.black;
+    captionX = 12;
+    captionY = 300;
+    captionSize = 28;
+    captionFont = 'Roboto';
   });
 
   @override
@@ -319,8 +368,9 @@ class _MemeEditorState extends State<MemeEditor> {
     body: SafeArea(child: Column(children: [
       Expanded(child: Center(child: AspectRatio(
         aspectRatio: 1,
-        child: LayoutBuilder(builder: (context, constraints) =>
-          RepaintBoundary(key: boundary, child: Container(
+        child: LayoutBuilder(builder: (context, constraints) {
+          canvasWidth = constraints.maxWidth;
+          return RepaintBoundary(key: boundary, child: Container(
             color: background,
             child: Stack(clipBehavior: Clip.hardEdge, children: [
               for (var i = 0; i < layers.length; i++)
@@ -344,21 +394,42 @@ class _MemeEditorState extends State<MemeEditor> {
                     ),
                   ),
                 ),
-              Positioned(left: 12, right: 12, bottom: 20, child: IgnorePointer(
-                child: Text(caption.text, textAlign: TextAlign.center,
-                  style: TextStyle(color: textColor, fontSize: 28,
-                    fontWeight: FontWeight.w900,
-                    shadows: const [Shadow(blurRadius: 5, color: Colors.black)])),
-              )),
+              Positioned(
+                left: captionX.clamp(0, math.max(0, constraints.maxWidth - 40)),
+                top: captionY.clamp(0, math.max(0, constraints.maxHeight - 40)),
+                child: GestureDetector(
+                  onPanUpdate: (details) => setState(() {
+                    captionX = (captionX + details.delta.dx).clamp(0, math.max(0, constraints.maxWidth - 40));
+                    captionY = (captionY + details.delta.dy).clamp(0, math.max(0, constraints.maxHeight - 40));
+                  }),
+                  child: SizedBox(
+                    width: math.max(40, constraints.maxWidth - captionX),
+                    child: Text(caption.text, textAlign: TextAlign.center,
+                      style: TextStyle(color: textColor, fontSize: captionSize,
+                        fontFamily: captionFont, fontWeight: FontWeight.w900)),
+                  ),
+                ),
+              ),
             ]),
-          )),
-        ),
+          ));
+        }),
       ))),
       Padding(padding: const EdgeInsets.all(12), child: Column(children: [
         TextField(controller: caption, focusNode: focus,
           onChanged: (_) => setState(() {}),
           decoration: const InputDecoration(labelText: 'Meme caption',
             border: OutlineInputBorder())),
+        Row(children: [
+          const Text('Font size'),
+          Expanded(child: Slider(min: 12, max: 72, value: captionSize,
+            onChanged: (value) => setState(() => captionSize = value))),
+          Text(captionSize.round().toString()),
+          const SizedBox(width: 8),
+          DropdownButton<String>(value: captionFont,
+            items: const ['Roboto', 'Arial', 'Georgia', 'Courier New', 'Times New Roman']
+              .map((font) => DropdownMenuItem(value: font, child: Text(font))).toList(),
+            onChanged: (font) { if (font != null) setState(() => captionFont = font); }),
+        ]),
         const SizedBox(height: 10),
         SingleChildScrollView(scrollDirection: Axis.horizontal, child: Row(children: [
           FilledButton.icon(onPressed: importSticker,
@@ -377,16 +448,19 @@ class _MemeEditorState extends State<MemeEditor> {
             selected = layers.length - 1;
           }), child: const Text('Duplicate')),
           OutlinedButton(onPressed: () => setState(() => background =
-            background == Colors.white ? const Color(0xFF232323) : Colors.white),
-            child: const Text('Background')),
-          OutlinedButton(onPressed: () => setState(() => textColor =
-            textColor == Colors.white ? Colors.black : Colors.white),
+            background == Colors.white ? Colors.black : Colors.white),
+            child: const Text('Black / White BG')),
+          OutlinedButton(onPressed: chooseTextColor,
             child: const Text('Text colour')),
           OutlinedButton(onPressed: selected == null ? null : () => setState(() {
             layers.removeAt(selected!);
             selected = null;
           }), child: const Text('Delete')),
           FilledButton(onPressed: exportPng, child: const Text('Download PNG')),
+          FilledButton.icon(onPressed: exportingMp4 ? null : exportAnimatedMp4,
+            icon: exportingMp4 ? const SizedBox(width: 16, height: 16,
+              child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.movie),
+            label: Text(exportingMp4 ? 'Exporting MP4...' : 'Export Animated Meme → MP4')),
         ])),
       ])),
     ])),
