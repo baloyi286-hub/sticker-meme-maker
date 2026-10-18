@@ -1,0 +1,32 @@
+name: Flutter Web CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Generate Flutter web platform files
+        run: flutter create --platforms=web --project-name=sticker_meme_maker .
+      - name: Install dependencies
+        run: flutter pub get
+      - name: Analyze
+        run: flutter analyze --no-fatal-infos
+      - name: Build PWA
+        run: flutter build web --release --pwa-strategy=offline-first
+      - name: Upload build
+        uses: actions/upload-artifact@v4
+        with:
+          name: sticker-meme-maker-web
+          path: build/web/
+          retention-days: 14
