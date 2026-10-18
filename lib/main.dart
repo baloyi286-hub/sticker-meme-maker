@@ -60,7 +60,7 @@ class _MemeEditorState extends State<MemeEditor> {
   final focus = FocusNode();
   Color background = Colors.white;
   double captionX = 12, captionY = 300, captionSize = 28;
-  String captionFont = 'Roboto';
+  String captionFont = 'Arial';
   Color textColor = Colors.black;
   int? selected;
   bool exportingMp4 = false;
@@ -309,7 +309,7 @@ class _MemeEditorState extends State<MemeEditor> {
       captionX = (data['captionX'] as num?)?.toDouble() ?? 12;
       captionY = (data['captionY'] as num?)?.toDouble() ?? 300;
       captionSize = (data['captionSize'] as num?)?.toDouble() ?? 28;
-      captionFont = data['captionFont'] as String? ?? 'Roboto';
+      captionFont = data['captionFont'] as String? ?? 'Arial';
       projectName = name;
       selected = null;
     });
@@ -345,7 +345,7 @@ class _MemeEditorState extends State<MemeEditor> {
     captionX = 12;
     captionY = 300;
     captionSize = 28;
-    captionFont = 'Roboto';
+    captionFont = 'Arial';
   });
 
   @override
@@ -406,7 +406,7 @@ class _MemeEditorState extends State<MemeEditor> {
                     width: math.max(40, constraints.maxWidth - captionX),
                     child: Text(caption.text, textAlign: TextAlign.center,
                       style: TextStyle(color: textColor, fontSize: captionSize,
-                        fontFamily: captionFont, fontWeight: FontWeight.w900)),
+                        fontFamily: captionFont, fontWeight: captionFont == 'Arial' ? FontWeight.w400 : FontWeight.w900)),
                   ),
                 ),
               ),
