@@ -68,10 +68,10 @@ class _MemeEditorState extends State<MemeEditor> {
   @override
   void initState() {
     super.initState();
-    pasteSubscription = html.window.onPaste.listen((event) {
+    pasteSubscription = html.document.on['paste'].listen((event) {
       final clipboard = (event as html.ClipboardEvent).clipboardData;
       if (clipboard == null) return;
-      for (final file in clipboard.files) {
+      for (final file in clipboard.files ?? <html.File>[]) {
         if (file.type.startsWith('image/')) {
           _readFile(file);
           event.preventDefault();
@@ -91,8 +91,11 @@ class _MemeEditorState extends State<MemeEditor> {
     reader.readAsArrayBuffer(file);
     await reader.onLoad.first;
     final result = reader.result;
-    if (result is ByteBuffer) addSticker(result.asUint8List(), file.name, saveToLibrary: true);
-    else if (result is Uint8List) addSticker(result, file.name, saveToLibrary: true);
+    if (result is ByteBuffer) {
+      addSticker(result.asUint8List(), file.name, saveToLibrary: true);
+    } else if (result is Uint8List) {
+      addSticker(result, file.name, saveToLibrary: true);
+    }
   }
 
   void addSticker(Uint8List bytes, String name, {bool saveToLibrary = false}) {
@@ -230,8 +233,8 @@ class _MemeEditorState extends State<MemeEditor> {
 
   Map<String, dynamic> snapshot() => {
     'caption': caption.text,
-    'background': background.value,
-    'textColor': textColor.value,
+    'background': background.toARGB32(),
+    'textColor': textColor.toARGB32(),
     'layers': layers.map((layer) => layer.toJson()).toList(),
   };
 
