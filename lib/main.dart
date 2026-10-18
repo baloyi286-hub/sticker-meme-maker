@@ -118,28 +118,8 @@ class _MemeEditorState extends State<MemeEditor> {
     }
   }
 
-  Future<void> pasteSticker() async {
-    try {
-      final clipboard = html.window.navigator.clipboard;
-      if (clipboard == null) {
-        message('Use Ctrl+V or upload a sticker on this browser');
-        return;
-      }
-      // Browser clipboard image support differs on Safari and Chrome.
-      final items = await clipboard.read();
-      for (final item in items) {
-        for (final type in item.types) {
-          if (type.startsWith('image/')) {
-            final blob = await item.getType(type);
-            await _readFile(html.File([blob], 'pasted-sticker.png', {'type': type}));
-            return;
-          }
-        }
-      }
-      message('Clipboard has no accessible image. Save/share the sticker as a file.');
-    } catch (_) {
-      message('Clipboard access blocked. Try Ctrl+V or Add sticker.');
-    }
+  void pasteSticker() {
+    message('Copy an image, then press Ctrl+V (or Cmd+V). On iPhone, use Add sticker.');
   }
 
   void download(Uint8List bytes, String name, String mime) {
