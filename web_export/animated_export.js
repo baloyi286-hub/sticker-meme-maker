@@ -116,8 +116,12 @@ window.exportAnimatedMeme = async function (json) {
     for (let i = 0; i < fps * seconds; i++) {
       if (failure) throw failure;
       const timeUs = Math.round(i * 1000000 / fps);
-      ctx.fillStyle = bg;
+      // Black letterboxing outside the square meme for portrait WhatsApp Status.
+      ctx.fillStyle = '#000000';
       ctx.fillRect(0, 0, width, height);
+      // Preserve the editor's chosen background only within its square canvas.
+      ctx.fillStyle = bg;
+      ctx.fillRect(0, top, square, square);
       ctx.save();
       ctx.beginPath();
       ctx.rect(0, top, square, square);
