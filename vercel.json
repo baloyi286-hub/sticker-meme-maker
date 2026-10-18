@@ -1,1 +1,6 @@
-{"buildCommand":"bash scripts/build-web.sh","outputDirectory":"build/web","framework":null,"installCommand":"echo Flutter installed by build script"}
+{
+  "buildCommand": "bash scripts/build-web.sh",
+  "outputDirectory": "build/web",
+  "framework": null,
+  "installCommand": "npm install --no-audit --no-fund"
+}
