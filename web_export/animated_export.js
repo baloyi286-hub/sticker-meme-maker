@@ -82,18 +82,64 @@ function supportedMp4RecorderType() {
     .find(type => MediaRecorder.isTypeSupported(type)) || null;
 }
 
+let sharedWebPDecoder;
+
 async function prepareNativeSticker(layer) {
   const bytes = stickerBytes(layer.bytes);
   const type = imageMime(bytes);
+  if (type === 'image/webp') {
+    if (typeof window.createWebPFrameDecoder !== 'function') {
+      throw new Error('Animated WebP decoder was not loaded. Refresh the app.');
+    }
+    if (!sharedWebPDecoder) {
+      sharedWebPDecoder = window.createWebPFrameDecoder();
+      await sharedWebPDecoder.waitRuntime();
+    }
+    const animation = await sharedWebPDecoder.decodeFrames(bytes);
+    if (!animation.frames.length) throw new Error('Animated WebP has no frames.');
+    if (animation.width * animation.height * animation.frames.length > 90000000) {
+      throw new Error('This animated sticker is too large to export on a phone.');
+    }
+    const frames = animation.frames.map(frame => {
+      const rgba = new Uint8ClampedArray(frame.rgba.length * 4);
+      for (let i = 0; i < frame.rgba.length; i++) {
+        const pixel = frame.rgba[i] >>> 0;
+        const offset = i * 4;
+        rgba[offset] = pixel >>> 24;
+        rgba[offset + 1] = (pixel >>> 16) & 255;
+        rgba[offset + 2] = (pixel >>> 8) & 255;
+        rgba[offset + 3] = pixel & 255;
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = animation.width;
+      canvas.height = animation.height;
+      const ctx = canvas.getContext('2d');
+      ctx.putImageData(new ImageData(rgba, animation.width, animation.height), 0, 0);
+      return { canvas, duration: Math.max(20, frame.duration || 100) };
+    });
+    const totalMs = frames.reduce((sum, frame) => sum + frame.duration, 0);
+    return {
+      frameAt(timeUs) {
+        let elapsed = (timeUs / 1000) % totalMs;
+        for (const frame of frames) {
+          if (elapsed < frame.duration) return frame.canvas;
+          elapsed -= frame.duration;
+        }
+        return frames[frames.length - 1].canvas;
+      },
+      close() { frames.length = 0; }
+    };
+  }
+  // Static PNG/JPEG can be drawn as-is. Animated GIF needs a separate
+  // frame decoder; never silently export it as a still image.
+  if (type === 'image/gif') {
+    throw new Error('Animated GIF export on iPhone is not supported yet. Use an animated WebP sticker.');
+  }
   const url = URL.createObjectURL(new Blob([bytes], { type }));
   const img = new Image();
   img.src = url;
-  try {
-    await img.decode();
-  } catch (error) {
-    URL.revokeObjectURL(url);
-    throw new Error('Could not load sticker animation: ' + error);
-  }
+  try { await img.decode(); }
+  catch (error) { URL.revokeObjectURL(url); throw error; }
   return { frameAt() { return img; }, close() { URL.revokeObjectURL(url); } };
 }
 
@@ -115,7 +161,8 @@ async function recordMobileMeme(project, render) {
     for (const layer of project.layers) stickers.push(await prepareNativeSticker(layer));
     // Keep a live rendering loop; browsers advance GIF/WebP HTMLImageElements
     // with their own animation clocks. Unlike ImageDecoder this needs no WebCodecs.
-    const draw = () => render(ctx, project, stickers, performance.now() * 1000, width, height);
+    let animationStart = performance.now();
+    const draw = () => render(ctx, project, stickers, (performance.now() - animationStart) * 1000, width, height);
     draw();
     stream = canvas.captureStream(fps);
     recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 2500000 });
@@ -128,6 +175,7 @@ async function recordMobileMeme(project, render) {
     });
     recorder.start();
     const start = performance.now();
+    animationStart = start;
     await new Promise((resolve, reject) => {
       function tick(now) {
         if (recorder.state === 'inactive') return reject(new Error('Recording stopped unexpectedly.'));
