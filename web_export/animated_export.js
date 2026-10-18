@@ -83,14 +83,28 @@ function supportedMp4RecorderType() {
 }
 
 let sharedWebPDecoder;
+let decoderScriptPromise;
+function loadWebPDecoder() {
+  if (typeof window.createWebPFrameDecoder === 'function') return Promise.resolve();
+  if (!decoderScriptPromise) {
+    decoderScriptPromise = new Promise((resolve, reject) => {
+      const script = document.createElement('script');
+      script.src = '/webp_decoder.js';
+      script.onload = () => typeof window.createWebPFrameDecoder === 'function'
+        ? resolve() : reject(new Error('WebP decoder did not initialize.'));
+      script.onerror = () => reject(new Error('Could not load WebP decoder script.'));
+      document.head.appendChild(script);
+    });
+  }
+  return decoderScriptPromise;
+}
+
 
 async function prepareNativeSticker(layer) {
   const bytes = stickerBytes(layer.bytes);
   const type = imageMime(bytes);
   if (type === 'image/webp') {
-    if (typeof window.createWebPFrameDecoder !== 'function') {
-      throw new Error('Animated WebP decoder was not loaded. Refresh the app.');
-    }
+    await loadWebPDecoder();
     if (!sharedWebPDecoder) {
       sharedWebPDecoder = window.createWebPFrameDecoder();
       await sharedWebPDecoder.waitRuntime();
