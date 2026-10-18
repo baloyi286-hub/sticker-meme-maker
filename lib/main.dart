@@ -19,11 +19,12 @@ class MemeApp extends StatelessWidget {
 }
 
 class StickerLayer {
-  StickerLayer(this.bytes, {this.x = 40, this.y = 40, this.size = 130});
+  StickerLayer(this.bytes, {this.x = 40, this.y = 40, this.size = 130, this.angle = 0});
   final Uint8List bytes;
   double x;
   double y;
   double size;
+  double angle;
 }
 
 class MemeEditor extends StatefulWidget {
@@ -98,7 +99,10 @@ class _MemeEditorState extends State<MemeEditor> {
                       decoration: BoxDecoration(border: Border.all(
                         color: selected == i ? Colors.lightGreenAccent : Colors.transparent,
                       )),
-                      child: Image.memory(layers[i].bytes, width: layers[i].size, height: layers[i].size),
+                      child: Transform.rotate(
+                        angle: layers[i].angle,
+                        child: Image.memory(layers[i].bytes, width: layers[i].size, height: layers[i].size),
+                      ),
                     ),
                   ),
                 ),
@@ -119,6 +123,13 @@ class _MemeEditorState extends State<MemeEditor> {
           FilledButton.icon(onPressed: importSticker, icon: const Icon(Icons.add_photo_alternate), label: const Text('Add sticker')),
           OutlinedButton(onPressed: selected == null ? null : () => setState(() => layers[selected!].size += 20), child: const Text('Larger')),
           OutlinedButton(onPressed: selected == null ? null : () => setState(() => layers[selected!].size = (layers[selected!].size - 20).clamp(40, 500)), child: const Text('Smaller')),
+          OutlinedButton(onPressed: selected == null ? null : () => setState(() => layers[selected!].angle += 0.3926991), child: const Text('Rotate')),
+          OutlinedButton(onPressed: selected == null ? null : () => setState(() {
+            final source = layers[selected!];
+            layers.add(StickerLayer(source.bytes, x: source.x + 15, y: source.y + 15, size: source.size, angle: source.angle));
+            selected = layers.length - 1;
+          }), child: const Text('Duplicate')),
+          OutlinedButton(onPressed: () => setState(() => background = background == Colors.white ? const Color(0xFF232323) : Colors.white), child: const Text('Background')),
           OutlinedButton(onPressed: selected == null ? null : () => setState(() { layers.removeAt(selected!); selected = null; }), child: const Text('Delete')),
           FilledButton(onPressed: exportPng, child: const Text('Download PNG')),
         ]),
