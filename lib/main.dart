@@ -108,7 +108,7 @@ class _MemeEditorState extends State<MemeEditor> {
       message('Sticker exceeds 12 MB limit');
       return;
     }
-    if (saveToLibrary) saveStickerToLibrary(bytes, name);
+    if (saveToLibrary) unawaited(uploadStickerToBlob(bytes, name));
     setState(() {
       layers.add(StickerLayer(bytes, name: name));
       selected = layers.length - 1;
@@ -154,8 +154,50 @@ class _MemeEditorState extends State<MemeEditor> {
     }
   }
 
+  Future<void> uploadStickerToBlob(Uint8List bytes, String name) async {
+    try {
+      await js_util.promiseToFuture<Object?>(js_util.callMethod(
+        html.window, 'uploadSharedSticker', [base64Encode(bytes)]));
+    } catch (error) {
+      // Keep a local copy for retry if the user is offline or Blob is unavailable.
+      saveStickerToLibrary(bytes, name);
+      message('Sticker added locally, but cloud upload failed: $error');
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> sharedStickers() async {
+    final items = <Map<String, dynamic>>[];
+    String cursor = '';
+    do {
+      final result = await js_util.promiseToFuture<Object?>(js_util.callMethod(
+        html.window, 'listSharedStickers', [cursor]));
+      final page = jsonDecode(result as String) as Map<String, dynamic>;
+      items.addAll((page['stickers'] as List)
+        .map((item) => Map<String, dynamic>.from(item as Map)));
+      cursor = page['hasMore'] == true ? (page['cursor'] as String? ?? '') : '';
+    } while (cursor.isNotEmpty);
+    items.sort((a, b) => (b['uploadedAt']?.toString() ?? '')
+      .compareTo(a['uploadedAt']?.toString() ?? ''));
+    return items;
+  }
+
+  Future<void> addSharedSticker(String url, String name) async {
+    try {
+      final request = await html.HttpRequest.request(url, responseType: 'arraybuffer');
+      final result = request.response;
+      if (result is ByteBuffer) {
+        addSticker(result.asUint8List(), name);
+      } else if (result is Uint8List) {
+        addSticker(result, name);
+      } else {
+        throw StateError('Unable to read sticker image.');
+      }
+    } catch (error) {
+      message('Unable to load shared sticker: $error');
+    }
+  }
+
   void showStickerLibrary() {
-    final items = libraryItems();
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -164,46 +206,51 @@ class _MemeEditorState extends State<MemeEditor> {
           height: MediaQuery.sizeOf(sheetContext).height * 0.7,
           child: Column(children: [
             const ListTile(
-              title: Text('My stickers'),
-              subtitle: Text('Saved in this browser. Tap to reuse.'),
+              title: Text('Shared stickers'),
+              subtitle: Text('Everyone can reuse stickers saved in Vercel Blob.'),
             ),
-            Expanded(child: items.isEmpty
-              ? const Center(child: Text('No stickers yet. Paste or import an image.'))
-              : GridView.builder(
+            Expanded(child: FutureBuilder<List<Map<String, dynamic>>>(
+              future: sharedStickers(),
+              builder: (context, snapshot) {
+                if (snapshot.connectionState != ConnectionState.done) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+                if (snapshot.hasError) {
+                  return Center(child: Padding(
+                    padding: const EdgeInsets.all(20),
+                    child: Text('Unable to load shared stickers: ${snapshot.error}')));
+                }
+                final items = snapshot.data ?? [];
+                if (items.isEmpty) {
+                  return const Center(child: Text('No shared stickers yet. Add one!'));
+                }
+                return GridView.builder(
                   padding: const EdgeInsets.all(12),
                   gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
                     maxCrossAxisExtent: 130, mainAxisSpacing: 10, crossAxisSpacing: 10),
                   itemCount: items.length,
                   itemBuilder: (context, index) {
                     final item = items[index];
-                    final bytes = base64Decode(item['bytes'] as String);
-                    return Stack(children: [
-                      Positioned.fill(child: InkWell(
-                        onTap: () {
-                          Navigator.pop(sheetContext);
-                          addSticker(bytes, item['name'] as String? ?? 'Sticker');
-                        },
-                        child: Container(
-                          decoration: BoxDecoration(
-                            color: Colors.white10,
-                            borderRadius: BorderRadius.circular(12)),
-                          padding: const EdgeInsets.all(12),
-                          child: Image.memory(bytes, fit: BoxFit.contain),
-                        ),
-                      )),
-                      Positioned(top: 0, right: 0, child: IconButton(
-                        tooltip: 'Delete sticker',
-                        icon: const Icon(Icons.close, size: 18),
-                        onPressed: () {
-                          items.removeAt(index);
-                          html.window.localStorage[stickerLibraryKey] = jsonEncode(items);
-                          Navigator.pop(sheetContext);
-                          showStickerLibrary();
-                        },
-                      )),
-                    ]);
+                    final url = item['url'] as String;
+                    final name = (item['pathname'] as String).split('/').last;
+                    return InkWell(
+                      onTap: () {
+                        Navigator.pop(sheetContext);
+                        unawaited(addSharedSticker(url, name));
+                      },
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: Colors.white10,
+                          borderRadius: BorderRadius.circular(12)),
+                        padding: const EdgeInsets.all(12),
+                        child: Image.network(url, fit: BoxFit.contain,
+                          errorBuilder: (_, __, ___) => const Icon(Icons.broken_image)),
+                      ),
+                    );
                   },
-                )),
+                );
+              },
+            )),
           ]),
         ),
       ),
