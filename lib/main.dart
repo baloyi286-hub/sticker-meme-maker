@@ -63,6 +63,7 @@ class _MemeEditorState extends State<MemeEditor> {
   String? projectName;
   StreamSubscription<html.Event>? pasteSubscription;
   static const storageKey = 'sticker_meme_projects_v1';
+  static const stickerLibraryKey = 'sticker_meme_library_v1';
 
   @override
   void initState() {
@@ -70,7 +71,7 @@ class _MemeEditorState extends State<MemeEditor> {
     pasteSubscription = html.window.onPaste.listen((event) {
       final clipboard = (event as html.ClipboardEvent).clipboardData;
       if (clipboard == null) return;
-      for (final file in clipboard.files ?? <html.File>[]) {
+      for (final file in clipboard.files) {
         if (file.type.startsWith('image/')) {
           _readFile(file);
           event.preventDefault();
@@ -90,15 +91,16 @@ class _MemeEditorState extends State<MemeEditor> {
     reader.readAsArrayBuffer(file);
     await reader.onLoad.first;
     final result = reader.result;
-    if (result is ByteBuffer) addSticker(result.asUint8List(), file.name);
-    else if (result is Uint8List) addSticker(result, file.name);
+    if (result is ByteBuffer) addSticker(result.asUint8List(), file.name, saveToLibrary: true);
+    else if (result is Uint8List) addSticker(result, file.name, saveToLibrary: true);
   }
 
-  void addSticker(Uint8List bytes, String name) {
+  void addSticker(Uint8List bytes, String name, {bool saveToLibrary = false}) {
     if (bytes.lengthInBytes > 12 * 1024 * 1024) {
       message('Sticker exceeds 12 MB limit');
       return;
     }
+    if (saveToLibrary) saveStickerToLibrary(bytes, name);
     setState(() {
       layers.add(StickerLayer(bytes, name: name));
       selected = layers.length - 1;
@@ -114,8 +116,90 @@ class _MemeEditorState extends State<MemeEditor> {
     );
     if (result == null) return;
     for (final file in result.files) {
-      if (file.bytes != null) addSticker(file.bytes!, file.name);
+      if (file.bytes != null) addSticker(file.bytes!, file.name, saveToLibrary: true);
     }
+  }
+
+
+  List<Map<String, dynamic>> libraryItems() {
+    try {
+      final items = jsonDecode(html.window.localStorage[stickerLibraryKey] ?? '[]') as List;
+      return items.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  void saveStickerToLibrary(Uint8List bytes, String name) {
+    try {
+      final items = libraryItems();
+      final encoded = base64Encode(bytes);
+      if (items.any((item) => item['bytes'] == encoded)) return;
+      items.insert(0, {
+        'id': DateTime.now().microsecondsSinceEpoch.toString(),
+        'name': name,
+        'bytes': encoded,
+      });
+      html.window.localStorage[stickerLibraryKey] = jsonEncode(items);
+    } catch (_) {
+      message('Sticker added to canvas, but browser library storage is full.');
+    }
+  }
+
+  void showStickerLibrary() {
+    final items = libraryItems();
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (sheetContext) => SafeArea(
+        child: SizedBox(
+          height: MediaQuery.sizeOf(sheetContext).height * 0.7,
+          child: Column(children: [
+            const ListTile(
+              title: Text('My stickers'),
+              subtitle: Text('Saved in this browser. Tap to reuse.'),
+            ),
+            Expanded(child: items.isEmpty
+              ? const Center(child: Text('No stickers yet. Paste or import an image.'))
+              : GridView.builder(
+                  padding: const EdgeInsets.all(12),
+                  gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                    maxCrossAxisExtent: 130, mainAxisSpacing: 10, crossAxisSpacing: 10),
+                  itemCount: items.length,
+                  itemBuilder: (context, index) {
+                    final item = items[index];
+                    final bytes = base64Decode(item['bytes'] as String);
+                    return Stack(children: [
+                      Positioned.fill(child: InkWell(
+                        onTap: () {
+                          Navigator.pop(sheetContext);
+                          addSticker(bytes, item['name'] as String? ?? 'Sticker');
+                        },
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: Colors.white10,
+                            borderRadius: BorderRadius.circular(12)),
+                          padding: const EdgeInsets.all(12),
+                          child: Image.memory(bytes, fit: BoxFit.contain),
+                        ),
+                      )),
+                      Positioned(top: 0, right: 0, child: IconButton(
+                        tooltip: 'Delete sticker',
+                        icon: const Icon(Icons.close, size: 18),
+                        onPressed: () {
+                          items.removeAt(index);
+                          html.window.localStorage[stickerLibraryKey] = jsonEncode(items);
+                          Navigator.pop(sheetContext);
+                          showStickerLibrary();
+                        },
+                      )),
+                    ]);
+                  },
+                )),
+          ]),
+        ),
+      ),
+    );
   }
 
   void pasteSticker() {
@@ -223,6 +307,8 @@ class _MemeEditorState extends State<MemeEditor> {
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(title: Text(projectName ?? 'Sticker Meme Maker'), actions: [
+      IconButton(tooltip: 'My stickers', onPressed: showStickerLibrary,
+        icon: const Icon(Icons.collections_bookmark)),
       IconButton(tooltip: 'New meme', onPressed: newProject, icon: const Icon(Icons.add)),
       IconButton(tooltip: 'Open saved', onPressed: showProjects, icon: const Icon(Icons.folder_open)),
       IconButton(tooltip: 'Save project', onPressed: saveProject, icon: const Icon(Icons.save)),
@@ -276,6 +362,7 @@ class _MemeEditorState extends State<MemeEditor> {
             icon: const Icon(Icons.add_photo_alternate), label: const Text('Add sticker')),
           const SizedBox(width: 8),
           OutlinedButton(onPressed: pasteSticker, child: const Text('Paste')),
+          OutlinedButton(onPressed: showStickerLibrary, child: const Text('My stickers')),
           OutlinedButton(onPressed: selected == null ? null : () => setState(() => layers[selected!].size += 20), child: const Text('Larger')),
           OutlinedButton(onPressed: selected == null ? null : () => setState(() => layers[selected!].size = (layers[selected!].size - 20).clamp(40, 500)), child: const Text('Smaller')),
           OutlinedButton(onPressed: selected == null ? null : () => setState(() => layers[selected!].angle += math.pi / 8), child: const Text('Rotate')),
