@@ -138,6 +138,8 @@ class _MemeEditorState extends State<MemeEditor> {
   Color textColor = Colors.black;
   int? selected;
   bool exportingMp4 = false;
+  double stickerGestureStartSize = 130;
+  double stickerGestureStartX = 0, stickerGestureStartY = 0;
   double canvasWidth = 400;
   String? projectName;
   StreamSubscription<html.Event>? pasteSubscription;
@@ -562,14 +564,32 @@ class _MemeEditorState extends State<MemeEditor> {
                         onTap: () => setState(() {
                           selected = i; selectedText = null; editingText = false;
                         }),
-                        onPanStart: (_) => setState(() {
+                        onScaleStart: (_) => setState(() {
                           selected = i; selectedText = null; editingText = false;
+                          stickerGestureStartSize = layers[i].size;
+                          stickerGestureStartX = layers[i].x;
+                          stickerGestureStartY = layers[i].y;
                         }),
-                        onPanUpdate: (details) => setState(() {
-                          layers[i].x = (layers[i].x + details.delta.dx)
-                            .clamp(0, math.max(0, constraints.maxWidth - layers[i].size));
-                          layers[i].y = (layers[i].y + details.delta.dy)
-                            .clamp(0, math.max(0, constraints.maxHeight - layers[i].size));
+                        onScaleUpdate: (details) => setState(() {
+                          final layer = layers[i];
+                          if (details.pointerCount >= 2) {
+                            // Keep the sticker centred while two fingers pinch outward/inward.
+                            final nextSize = (stickerGestureStartSize * details.scale)
+                              .clamp(40.0, math.min(500.0,
+                                math.min(constraints.maxWidth, constraints.maxHeight)));
+                            final centreX = stickerGestureStartX + stickerGestureStartSize / 2;
+                            final centreY = stickerGestureStartY + stickerGestureStartSize / 2;
+                            layer.size = nextSize;
+                            layer.x = (centreX - nextSize / 2)
+                              .clamp(0.0, math.max(0.0, constraints.maxWidth - nextSize));
+                            layer.y = (centreY - nextSize / 2)
+                              .clamp(0.0, math.max(0.0, constraints.maxHeight - nextSize));
+                          } else {
+                            layer.x = (layer.x + details.focalPointDelta.dx)
+                              .clamp(0.0, math.max(0.0, constraints.maxWidth - layer.size));
+                            layer.y = (layer.y + details.focalPointDelta.dy)
+                              .clamp(0.0, math.max(0.0, constraints.maxHeight - layer.size));
+                          }
                         }),
                         child: Container(
                           decoration: BoxDecoration(border: Border.all(
@@ -726,6 +746,15 @@ class _MemeEditorState extends State<MemeEditor> {
                     }))).toList(),
                 onChanged: (font) { if (font != null) setState(() =>
                   textLayers[selectedText!].font = font); }),
+              const SizedBox(width: 8),
+              const Text('Text size'),
+              SizedBox(width: 135, child: Slider(
+                value: textLayers[selectedText!].fontSize.clamp(10.0, 120.0),
+                min: 10, max: 120, divisions: 110,
+                label: textLayers[selectedText!].fontSize.round().toString(),
+                onChanged: (size) => setState(() =>
+                  textLayers[selectedText!].fontSize = size))),
+              Text('${textLayers[selectedText!].fontSize.round()}'),
               IconButton(tooltip: 'Bold', icon: const Icon(Icons.format_bold),
                 color: textLayers[selectedText!].bold ? Colors.purpleAccent : null,
                 onPressed: () => setState(() =>
