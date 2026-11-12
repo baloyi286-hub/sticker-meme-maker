@@ -554,23 +554,59 @@ class _MemeEditorState extends State<MemeEditor> {
               for (var i = 0; i < layers.length; i++)
                 Positioned(
                   left: layers[i].x, top: layers[i].y,
-                  child: GestureDetector(
-                    onTap: () => setState(() { selected = i; selectedText = null; editingText = false; }),
-                    onPanStart: (_) => setState(() { selected = i; selectedText = null; editingText = false; }),
-                    onPanUpdate: (details) => setState(() {
-                      layers[i].x = (layers[i].x + details.delta.dx).clamp(0, math.max(0, constraints.maxWidth - 30));
-                      layers[i].y = (layers[i].y + details.delta.dy).clamp(0, math.max(0, constraints.maxHeight - 30));
-                    }),
-                    child: Container(
-                      decoration: BoxDecoration(border: Border.all(
-                        color: selected == i ? Colors.lightGreenAccent : Colors.transparent,
-                      )),
-                      child: Transform.rotate(
-                        angle: layers[i].angle,
-                        child: Image.memory(layers[i].bytes, width: layers[i].size,
-                          height: layers[i].size, gaplessPlayback: true),
-                      ),
-                    ),
+                  child: SizedBox(
+                    width: layers[i].size, height: layers[i].size,
+                    child: Stack(children: [
+                      Positioned.fill(child: GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: () => setState(() {
+                          selected = i; selectedText = null; editingText = false;
+                        }),
+                        onPanStart: (_) => setState(() {
+                          selected = i; selectedText = null; editingText = false;
+                        }),
+                        onPanUpdate: (details) => setState(() {
+                          layers[i].x = (layers[i].x + details.delta.dx)
+                            .clamp(0, math.max(0, constraints.maxWidth - layers[i].size));
+                          layers[i].y = (layers[i].y + details.delta.dy)
+                            .clamp(0, math.max(0, constraints.maxHeight - layers[i].size));
+                        }),
+                        child: Container(
+                          decoration: BoxDecoration(border: Border.all(
+                            color: selected == i ? Colors.lightGreenAccent : Colors.transparent)),
+                          child: Transform.rotate(
+                            angle: layers[i].angle,
+                            child: Image.memory(layers[i].bytes,
+                              width: layers[i].size, height: layers[i].size,
+                              gaplessPlayback: true)),
+                        ))),
+                      if (selected == i)
+                        for (final corner in [Alignment.topLeft, Alignment.topRight,
+                            Alignment.bottomLeft, Alignment.bottomRight])
+                          Align(alignment: corner, child: GestureDetector(
+                            behavior: HitTestBehavior.opaque,
+                            onPanUpdate: (d) => setState(() {
+                              final layer = layers[i];
+                              final horizontal = corner.x < 0 ? -d.delta.dx : d.delta.dx;
+                              final vertical = corner.y < 0 ? -d.delta.dy : d.delta.dy;
+                              final delta = (horizontal + vertical) / 2;
+                              final oldSize = layer.size;
+                              final maxSize = math.min(constraints.maxWidth - layer.x,
+                                constraints.maxHeight - layer.y);
+                              final nextSize = (oldSize + delta)
+                                .clamp(40.0, math.max(40.0, maxSize));
+                              if (corner.x < 0) layer.x -= nextSize - oldSize;
+                              if (corner.y < 0) layer.y -= nextSize - oldSize;
+                              layer.size = nextSize;
+                              layer.x = layer.x.clamp(0, constraints.maxWidth - 30);
+                              layer.y = layer.y.clamp(0, constraints.maxHeight - 30);
+                            }),
+                            child: Container(width: 28, height: 28,
+                              alignment: Alignment.center,
+                              color: Colors.lightGreenAccent,
+                              child: const Icon(Icons.open_in_full,
+                                color: Colors.black, size: 16)))),
+                    ]),
                   ),
                 ),
               for (var i = 0; i < textLayers.length; i++)
@@ -622,19 +658,38 @@ class _MemeEditorState extends State<MemeEditor> {
                                 color: Colors.purpleAccent.withValues(alpha: 0.18),
                                 child: const Icon(Icons.drag_indicator, size: 15)))),
                         if (selectedText == i)
-                          Positioned(right: -7, bottom: -7,
-                            child: GestureDetector(
-                              behavior: HitTestBehavior.opaque,
-                              onPanUpdate: (d) => setState(() {
-                                final oldWidth = textLayers[i].width;
-                                textLayers[i].width = (oldWidth + d.delta.dx)
-                                  .clamp(70, math.max(70, constraints.maxWidth - textLayers[i].x));
-                                textLayers[i].fontSize = (textLayers[i].fontSize *
-                                  textLayers[i].width / oldWidth).clamp(10, 120);
-                              }),
-                              child: Container(width: 28, height: 28,
-                                color: Colors.purpleAccent,
-                                child: const Icon(Icons.open_in_full, size: 17)))),
+                          for (final corner in [Alignment.topLeft, Alignment.topRight,
+                              Alignment.bottomLeft, Alignment.bottomRight])
+                            Positioned(
+                              left: corner.x < 0 ? 0 : null,
+                              right: corner.x > 0 ? 0 : null,
+                              top: corner.y < 0 ? 0 : null,
+                              bottom: corner.y > 0 ? 0 : null,
+                              child: GestureDetector(
+                                behavior: HitTestBehavior.opaque,
+                                onPanUpdate: (d) => setState(() {
+                                  final layer = textLayers[i];
+                                  final horizontal = corner.x < 0 ? -d.delta.dx : d.delta.dx;
+                                  final vertical = corner.y < 0 ? -d.delta.dy : d.delta.dy;
+                                  // Horizontal movement controls wrapping width;
+                                  // vertical movement also scales the font.
+                                  final delta = horizontal.abs() >= vertical.abs()
+                                    ? horizontal : vertical;
+                                  final oldWidth = layer.width;
+                                  final nextWidth = (oldWidth + delta)
+                                    .clamp(70.0, math.max(70.0,
+                                      constraints.maxWidth - layer.x));
+                                  if (corner.x < 0) layer.x -= nextWidth - oldWidth;
+                                  layer.width = nextWidth;
+                                  layer.fontSize = (layer.fontSize * nextWidth / oldWidth)
+                                    .clamp(10.0, 120.0);
+                                  layer.x = layer.x.clamp(0, constraints.maxWidth - 40);
+                                }),
+                                child: Container(width: 28, height: 28,
+                                  alignment: Alignment.center,
+                                  color: Colors.purpleAccent,
+                                  child: const Icon(Icons.open_in_full, size: 17))),
+                            ),
                       ]),
                     ),
                   ),
