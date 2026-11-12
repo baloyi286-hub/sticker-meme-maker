@@ -270,7 +270,13 @@ function drawMemeFrame(ctx, project, stickers, timeUs, width, height) {
         .toString(16).padStart(8, '0').slice(2);
       ctx.textAlign = layer.align || 'left';
       const style = (layer.italic ? 'italic ' : '') + (layer.bold ? 'bold ' : '');
-      ctx.font = style + fontSize + 'px "' + (layer.font || font).replace(/"/g, '') + '"';
+      const compatibleFonts = {
+        'Arial': 'Arimo', 'Georgia': 'Gelasio',
+        'Courier New': 'Cousine', 'Times New Roman': 'Tinos'
+      };
+      const selectedFamily = layer.font || font;
+      const renderFamily = compatibleFonts[selectedFamily] || selectedFamily;
+      ctx.font = style + fontSize + 'px "' + renderFamily.replace(/"/g, '') + '"';
       const boxX = (layer.x + 8) * scale;
       const boxY = top + (layer.y + 22) * scale;
       const boxWidth = Math.max(20, (layer.width - 16) * scale);
