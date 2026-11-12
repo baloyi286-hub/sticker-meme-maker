@@ -664,7 +664,7 @@ class _MemeEditorState extends State<MemeEditor> {
                   'Times New Roman' => 'Merriweather',
                   final String name => name,
                 },
-                items: const ['Roboto', 'Open Sans', 'Lora', 'Roboto Mono', 'Merriweather']
+                items: const ['Roboto', 'Arial', 'Georgia', 'Courier New', 'Times New Roman', 'Open Sans', 'Lora', 'Roboto Mono', 'Merriweather']
                   .map((font) => DropdownMenuItem(value: font, child: Text(font))).toList(),
                 onChanged: (font) { if (font != null) setState(() =>
                   textLayers[selectedText!].font = font); }),
