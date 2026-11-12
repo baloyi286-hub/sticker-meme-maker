@@ -314,7 +314,16 @@ window.exportAnimatedMeme = async function (json) {
             }
           }
         } : (meta || {});
-        muxer.addVideoChunk(chunk, safeMeta);
+        // Chromium may omit EncodedVideoChunk.duration, but mp4-muxer
+        // requires a finite non-negative sample duration.
+        const duration = Number.isFinite(chunk.duration) && chunk.duration >= 0
+          ? chunk.duration : Math.round(1000000 / 30);
+        const encoded = new Uint8Array(chunk.byteLength);
+        chunk.copyTo(encoded);
+        const fixedChunk = new EncodedVideoChunk({
+          type: chunk.type, timestamp: chunk.timestamp, duration, data: encoded
+        });
+        muxer.addVideoChunk(fixedChunk, safeMeta);
       } catch (error) { failure = error; }
     },
     error: error => { failure = error; }
@@ -335,7 +344,7 @@ window.exportAnimatedMeme = async function (json) {
       if (failure) throw failure;
       const timeUs = Math.round(i * 1000000 / fps);
       drawMemeFrame(ctx, project, stickers, timeUs, width, height);
-      const frame = new VideoFrame(canvas, { timestamp: timeUs });
+      const frame = new VideoFrame(canvas, { timestamp: timeUs, duration: Math.round(1000000 / fps) });
       encoder.encode(frame, { keyFrame: i % (fps * 2) === 0 });
       frame.close();
       if (encoder.encodeQueueSize > 8) await new Promise(resolve => setTimeout(resolve, 10));
