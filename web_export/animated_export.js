@@ -277,16 +277,6 @@ function drawMemeFrame(ctx, project, stickers, timeUs, width, height) {
       ctx.translate(boxX + boxWidth / 2, boxY);
       ctx.rotate(layer.angle || 0);
       ctx.translate(-(boxX + boxWidth / 2), -boxY);
-      const oldFill = ctx.fillText.bind(ctx);
-      if (layer.underline) {
-        ctx.fillText = (text, x, y) => {
-          oldFill(text, x, y);
-          const measured = ctx.measureText(text).width;
-          const offset = ctx.textAlign === 'center' ? measured / 2 :
-            ctx.textAlign === 'right' ? measured : 0;
-          ctx.fillRect(x - offset, y + fontSize * 1.04, measured, Math.max(1, fontSize / 18));
-        };
-      }
       drawWrappedText(layer.text || '', (layer.x + 8) * scale,
         top + (layer.y + 22) * scale,
         Math.max(20, (layer.width - 16) * scale), fontSize);
