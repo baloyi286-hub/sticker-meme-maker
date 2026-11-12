@@ -576,7 +576,7 @@ class _MemeEditorState extends State<MemeEditor> {
                             // Keep the sticker centred while two fingers pinch outward/inward.
                             final nextSize = (stickerGestureStartSize * details.scale)
                               .clamp(40.0, math.min(500.0,
-                                math.min(constraints.maxWidth, constraints.maxHeight)));
+                                math.min(constraints.maxWidth, constraints.maxHeight))).toDouble();
                             final centreX = stickerGestureStartX + stickerGestureStartSize / 2;
                             final centreY = stickerGestureStartY + stickerGestureStartSize / 2;
                             layer.size = nextSize;
@@ -614,7 +614,7 @@ class _MemeEditorState extends State<MemeEditor> {
                               final maxSize = math.min(constraints.maxWidth - layer.x,
                                 constraints.maxHeight - layer.y);
                               final nextSize = (oldSize + delta)
-                                .clamp(40.0, math.max(40.0, maxSize));
+                                .clamp(40.0, math.max(40.0, maxSize)).toDouble();
                               if (corner.x < 0) layer.x -= nextSize - oldSize;
                               if (corner.y < 0) layer.y -= nextSize - oldSize;
                               layer.size = nextSize;
@@ -698,7 +698,7 @@ class _MemeEditorState extends State<MemeEditor> {
                                   final oldWidth = layer.width;
                                   final nextWidth = (oldWidth + delta)
                                     .clamp(70.0, math.max(70.0,
-                                      constraints.maxWidth - layer.x));
+                                      constraints.maxWidth - layer.x)).toDouble();
                                   if (corner.x < 0) layer.x -= nextWidth - oldWidth;
                                   layer.width = nextWidth;
                                   layer.fontSize = (layer.fontSize * nextWidth / oldWidth)
