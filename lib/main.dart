@@ -66,7 +66,8 @@ class _MemeEditorState extends State<MemeEditor> {
   final boundary = GlobalKey();
   final focus = FocusNode();
   Color background = Colors.white;
-  double captionX = 12, captionY = 300, captionSize = 28;
+  double captionX = 12, captionY = 40, captionSize = 28, captionWidth = 240;
+  TextAlign captionAlign = TextAlign.left;
   String captionFont = 'Arial';
   Color textColor = Colors.black;
   int? selected;
@@ -350,6 +351,7 @@ class _MemeEditorState extends State<MemeEditor> {
     'textColor': textColor.toARGB32(),
     'captionX': captionX, 'captionY': captionY,
     'captionSize': captionSize, 'captionFont': captionFont,
+    'captionWidth': captionWidth, 'captionAlign': captionAlign.name,
     'layers': layers.map((layer) => layer.toJson()).toList(),
   };
 
@@ -386,6 +388,9 @@ class _MemeEditorState extends State<MemeEditor> {
       captionY = (data['captionY'] as num?)?.toDouble() ?? 300;
       captionSize = (data['captionSize'] as num?)?.toDouble() ?? 28;
       captionFont = data['captionFont'] as String? ?? 'Arial';
+      captionWidth = (data['captionWidth'] as num?)?.toDouble() ?? 240;
+      captionAlign = TextAlign.values.firstWhere(
+        (a) => a.name == data['captionAlign'], orElse: () => TextAlign.left);
       projectName = name;
       selected = null;
     });
@@ -419,7 +424,9 @@ class _MemeEditorState extends State<MemeEditor> {
     background = Colors.white;
     textColor = Colors.black;
     captionX = 12;
-    captionY = 300;
+    captionY = 40;
+    captionWidth = 240;
+    captionAlign = TextAlign.left;
     captionSize = 28;
     captionFont = 'Arial';
   });
@@ -471,16 +478,18 @@ class _MemeEditorState extends State<MemeEditor> {
                   ),
                 ),
               Positioned(
-                left: captionX.clamp(0, math.max(0, constraints.maxWidth - 40)),
-                top: captionY.clamp(0, math.max(0, constraints.maxHeight - 40)),
+                left: captionX.clamp(0, math.max(0, constraints.maxWidth - 30)),
+                top: captionY.clamp(0, math.max(0, constraints.maxHeight - 30)),
                 child: GestureDetector(
+                  behavior: HitTestBehavior.translucent,
                   onPanUpdate: (details) => setState(() {
-                    captionX = (captionX + details.delta.dx).clamp(0, math.max(0, constraints.maxWidth - 40));
-                    captionY = (captionY + details.delta.dy).clamp(0, math.max(0, constraints.maxHeight - 40));
+                    captionX = (captionX + details.delta.dx).clamp(0, math.max(0, constraints.maxWidth - 30));
+                    captionY = (captionY + details.delta.dy).clamp(0, math.max(0, constraints.maxHeight - 30));
                   }),
-                  child: SizedBox(
-                    width: math.max(40, constraints.maxWidth - captionX),
-                    child: Text(caption.text, textAlign: TextAlign.center,
+                  child: Container(
+                    width: captionWidth.clamp(40, math.max(40, constraints.maxWidth - captionX)),
+                    decoration: BoxDecoration(border: Border.all(color: Colors.purpleAccent.withValues(alpha: 0.5))),
+                    child: Text(caption.text, softWrap: true, textAlign: captionAlign,
                       style: TextStyle(color: textColor, fontSize: captionSize,
                         fontFamily: captionFont, fontWeight: captionFont == 'Arial' ? FontWeight.w400 : FontWeight.w900)),
                   ),
@@ -492,6 +501,7 @@ class _MemeEditorState extends State<MemeEditor> {
       ))),
       Padding(padding: const EdgeInsets.all(12), child: Column(children: [
         TextField(controller: caption, focusNode: focus,
+          keyboardType: TextInputType.multiline, minLines: 2, maxLines: 4,
           onChanged: (_) => setState(() {}),
           decoration: const InputDecoration(labelText: 'Meme caption',
             border: OutlineInputBorder())),
@@ -505,6 +515,21 @@ class _MemeEditorState extends State<MemeEditor> {
             items: const ['Roboto', 'Arial', 'Georgia', 'Courier New', 'Times New Roman']
               .map((font) => DropdownMenuItem(value: font, child: Text(font))).toList(),
             onChanged: (font) { if (font != null) setState(() => captionFont = font); }),
+        ]),
+        Row(children: [
+          const Text('Text box width'),
+          Expanded(child: Slider(min: 60, max: math.max(60, canvasWidth),
+            value: captionWidth.clamp(60, math.max(60, canvasWidth)),
+            onChanged: (value) => setState(() => captionWidth = value))),
+          Text(captionWidth.round().toString()),
+          const SizedBox(width: 8),
+          DropdownButton<TextAlign>(value: captionAlign,
+            items: const [
+              DropdownMenuItem(value: TextAlign.left, child: Text('Left')),
+              DropdownMenuItem(value: TextAlign.center, child: Text('Centre')),
+              DropdownMenuItem(value: TextAlign.right, child: Text('Right')),
+            ],
+            onChanged: (value) { if (value != null) setState(() => captionAlign = value); }),
         ]),
         const SizedBox(height: 10),
         SingleChildScrollView(scrollDirection: Axis.horizontal, child: Row(children: [
