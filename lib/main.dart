@@ -101,18 +101,20 @@ class _MemeEditorState extends State<MemeEditor> {
   bool editingText = false;
   final textFocus = FocusNode();
   TextStyle memeFontStyle(MemeTextLayer layer) {
-    final fontName = switch (layer.font) {
-      'Arial' => 'Open Sans',
-      'Georgia' => 'Lora',
-      'Courier New' => 'Roboto Mono',
-      'Times New Roman' => 'Merriweather',
-      final String name => name,
-    };
-    return GoogleFonts.getFont(fontName,
+    final style = TextStyle(
       color: Color(layer.color), fontSize: layer.fontSize,
       fontWeight: layer.bold ? FontWeight.bold : FontWeight.normal,
       fontStyle: layer.italic ? FontStyle.italic : FontStyle.normal,
       decoration: layer.underline ? TextDecoration.underline : TextDecoration.none);
+    // These are browser/system fonts, not substitutes for Google Fonts.
+    if (const ['Arial', 'Georgia', 'Courier New', 'Times New Roman']
+        .contains(layer.font)) {
+      return style.copyWith(fontFamily: layer.font);
+    }
+    return GoogleFonts.getFont(layer.font,
+      color: style.color, fontSize: style.fontSize,
+      fontWeight: style.fontWeight, fontStyle: style.fontStyle,
+      decoration: style.decoration);
   }
 
   void finishTextEditing() {
@@ -657,13 +659,7 @@ class _MemeEditorState extends State<MemeEditor> {
               IconButton(tooltip: 'Text colour', onPressed: chooseTextColor,
                 icon: const Icon(Icons.format_color_text)),
               DropdownButton<String>(
-                value: switch (textLayers[selectedText!].font) {
-                  'Arial' => 'Open Sans',
-                  'Georgia' => 'Lora',
-                  'Courier New' => 'Roboto Mono',
-                  'Times New Roman' => 'Merriweather',
-                  final String name => name,
-                },
+                value: textLayers[selectedText!].font,
                 items: const ['Roboto', 'Arial', 'Georgia', 'Courier New', 'Times New Roman', 'Open Sans', 'Lora', 'Roboto Mono', 'Merriweather']
                   .map((font) => DropdownMenuItem(value: font, child: Text(font))).toList(),
                 onChanged: (font) { if (font != null) setState(() =>
