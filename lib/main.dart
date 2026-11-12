@@ -101,20 +101,20 @@ class _MemeEditorState extends State<MemeEditor> {
   bool editingText = false;
   final textFocus = FocusNode();
   TextStyle memeFontStyle(MemeTextLayer layer) {
-    final style = TextStyle(
+    // Flutter Web cannot reliably load OS-installed fonts in its canvas.
+    // Use individually loaded, metrically compatible web fonts instead.
+    final loadedFamily = switch (layer.font) {
+      'Arial' => 'Arimo',
+      'Georgia' => 'Gelasio',
+      'Courier New' => 'Cousine',
+      'Times New Roman' => 'Tinos',
+      final String family => family,
+    };
+    return GoogleFonts.getFont(loadedFamily,
       color: Color(layer.color), fontSize: layer.fontSize,
       fontWeight: layer.bold ? FontWeight.bold : FontWeight.normal,
       fontStyle: layer.italic ? FontStyle.italic : FontStyle.normal,
       decoration: layer.underline ? TextDecoration.underline : TextDecoration.none);
-    // These are browser/system fonts, not substitutes for Google Fonts.
-    if (const ['Arial', 'Georgia', 'Courier New', 'Times New Roman']
-        .contains(layer.font)) {
-      return style.copyWith(fontFamily: layer.font);
-    }
-    return GoogleFonts.getFont(layer.font,
-      color: style.color, fontSize: style.fontSize,
-      fontWeight: style.fontWeight, fontStyle: style.fontStyle,
-      decoration: style.decoration);
   }
 
   void finishTextEditing() {
