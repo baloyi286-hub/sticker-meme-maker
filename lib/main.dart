@@ -538,6 +538,7 @@ class _MemeEditorState extends State<MemeEditor> {
                   left: layers[i].x, top: layers[i].y,
                   child: GestureDetector(
                     onTap: () => setState(() { selected = i; selectedText = null; editingText = false; }),
+                    onPanStart: (_) => setState(() { selected = i; selectedText = null; editingText = false; }),
                     onPanUpdate: (details) => setState(() {
                       layers[i].x = (layers[i].x + details.delta.dx).clamp(0, math.max(0, constraints.maxWidth - 30));
                       layers[i].y = (layers[i].y + details.delta.dy).clamp(0, math.max(0, constraints.maxHeight - 30));
@@ -637,8 +638,9 @@ class _MemeEditorState extends State<MemeEditor> {
         }),
       ))),
       Padding(padding: const EdgeInsets.all(8), child: Column(children: [
-        if (selectedText != null)
-          SingleChildScrollView(scrollDirection: Axis.horizontal,
+        SizedBox(height: 48, child: selectedText == null
+          ? const SizedBox.shrink()
+          : SingleChildScrollView(scrollDirection: Axis.horizontal,
             child: Row(children: [
               for (final alignment in ['left', 'center', 'right'])
                 IconButton(
@@ -668,7 +670,7 @@ class _MemeEditorState extends State<MemeEditor> {
                 color: textLayers[selectedText!].underline ? Colors.purpleAccent : null,
                 onPressed: () => setState(() =>
                   textLayers[selectedText!].underline = !textLayers[selectedText!].underline)),
-            ])),
+            ]))),
         SingleChildScrollView(scrollDirection: Axis.horizontal, child: Row(children: [
           FilledButton.icon(onPressed: importSticker,
             icon: const Icon(Icons.add_photo_alternate), label: const Text('Add sticker')),
