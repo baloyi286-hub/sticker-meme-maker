@@ -661,7 +661,14 @@ class _MemeEditorState extends State<MemeEditor> {
               DropdownButton<String>(
                 value: textLayers[selectedText!].font,
                 items: const ['Roboto', 'Arial', 'Georgia', 'Courier New', 'Times New Roman', 'Open Sans', 'Lora', 'Roboto Mono', 'Merriweather']
-                  .map((font) => DropdownMenuItem(value: font, child: Text(font))).toList(),
+                  .map((font) => DropdownMenuItem(value: font,
+                    child: Text(switch (font) {
+                      'Arial' => 'Arial (Arimo compatible)',
+                      'Georgia' => 'Georgia (Gelasio compatible)',
+                      'Courier New' => 'Courier New (Cousine compatible)',
+                      'Times New Roman' => 'Times New Roman (Tinos compatible)',
+                      final String name => name,
+                    }))).toList(),
                 onChanged: (font) { if (font != null) setState(() =>
                   textLayers[selectedText!].font = font); }),
               IconButton(tooltip: 'Bold', icon: const Icon(Icons.format_bold),
