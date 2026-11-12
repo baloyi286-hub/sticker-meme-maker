@@ -250,19 +250,25 @@ function drawMemeFrame(ctx, project, stickers, timeUs, width, height) {
   ctx.textBaseline = 'top';
   const textSize = (project.captionSize || 28) * scale;
   ctx.font = '900 ' + textSize + 'px "' + font + '"';
-  const tx = (project.captionX + (editorWidth - project.captionX) / 2) * scale;
   const ty = top + project.captionY * scale;
-  const maxWidth = Math.max(1, (editorWidth - project.captionX) * scale);
-  const words = (project.caption || '').split(/\\s+/);
-  let line = '', row = 0;
-  for (const word of words) {
-    const next = line ? line + ' ' + word : word;
-    if (line && ctx.measureText(next).width > maxWidth) {
-      ctx.fillText(line, tx, ty + row * textSize * 1.2);
-      row++; line = word;
-    } else line = next;
+  const boxWidth = Math.max(30, (project.captionWidth || 240) * scale);
+  const align = project.captionAlign || 'left';
+  ctx.textAlign = align;
+  const left = project.captionX * scale;
+  const anchor = align === 'center' ? left + boxWidth / 2 :
+    align === 'right' ? left + boxWidth : left;
+  let row = 0;
+  for (const paragraph of (project.caption || '').split('\\n')) {
+    let line = '';
+    for (const word of paragraph.split(/\\s+/).filter(Boolean)) {
+      const next = line ? line + ' ' + word : word;
+      if (line && ctx.measureText(next).width > boxWidth) {
+        ctx.fillText(line, anchor, ty + row++ * textSize * 1.2);
+        line = word;
+      } else line = next;
+    }
+    ctx.fillText(line, anchor, ty + row++ * textSize * 1.2);
   }
-  if (line) ctx.fillText(line, tx, ty + row * textSize * 1.2);
   ctx.restore();
 }
 
@@ -294,7 +300,23 @@ window.exportAnimatedMeme = async function (json) {
   });
   let failure;
   const encoder = new VideoEncoder({
-    output: (chunk, meta) => muxer.addVideoChunk(chunk, meta),
+    output: (chunk, meta) => {
+      try {
+        // Some Chromium encoders supply a null colorSpace. mp4-muxer
+        // dereferences it when writing the AVC sample description.
+        const decoderConfig = meta?.decoderConfig;
+        const safeMeta = decoderConfig ? {
+          ...meta,
+          decoderConfig: {
+            ...decoderConfig,
+            colorSpace: decoderConfig.colorSpace || {
+              primaries: 'bt709', transfer: 'bt709', matrix: 'bt709', fullRange: false
+            }
+          }
+        } : (meta || {});
+        muxer.addVideoChunk(chunk, safeMeta);
+      } catch (error) { failure = error; }
+    },
     error: error => { failure = error; }
   });
   const stickers = [];
