@@ -246,28 +246,36 @@ function drawMemeFrame(ctx, project, stickers, timeUs, width, height) {
     ctx.restore();
   });
   ctx.fillStyle = fg;
-  ctx.textAlign = 'center';
   ctx.textBaseline = 'top';
-  const textSize = (project.captionSize || 28) * scale;
-  ctx.font = '900 ' + textSize + 'px "' + font + '"';
-  const ty = top + project.captionY * scale;
-  const boxWidth = Math.max(30, (project.captionWidth || 240) * scale);
-  const align = project.captionAlign || 'left';
-  ctx.textAlign = align;
-  const left = project.captionX * scale;
-  const anchor = align === 'center' ? left + boxWidth / 2 :
-    align === 'right' ? left + boxWidth : left;
-  let row = 0;
-  for (const paragraph of (project.caption || '').split('\\n')) {
-    let line = '';
-    for (const word of paragraph.split(/\\s+/).filter(Boolean)) {
-      const next = line ? line + ' ' + word : word;
-      if (line && ctx.measureText(next).width > boxWidth) {
-        ctx.fillText(line, anchor, ty + row++ * textSize * 1.2);
-        line = word;
-      } else line = next;
+  ctx.textAlign = 'left';
+  const drawWrappedText = (value, x, y, maxWidth, fontSize) => {
+    let row = 0;
+    for (const paragraph of value.split('\\n')) {
+      let line = '';
+      for (const word of paragraph.split(/\\s+/).filter(Boolean)) {
+        const next = line ? line + ' ' + word : word;
+        if (line && ctx.measureText(next).width > maxWidth) {
+          ctx.fillText(line, x, y + row++ * fontSize * 1.2);
+          line = word;
+        } else line = next;
+      }
+      ctx.fillText(line, x, y + row++ * fontSize * 1.2);
     }
-    ctx.fillText(line, anchor, ty + row++ * textSize * 1.2);
+  };
+  if (Array.isArray(project.textLayers)) {
+    for (const layer of project.textLayers) {
+      const fontSize = (layer.fontSize || 28) * scale;
+      ctx.font = fontSize + 'px "' + font + '"';
+      drawWrappedText(layer.text || '', (layer.x + 8) * scale,
+        top + (layer.y + 22) * scale,
+        Math.max(20, (layer.width - 16) * scale), fontSize);
+    }
+  } else if (project.caption) {
+    const fontSize = (project.captionSize || 28) * scale;
+    ctx.font = fontSize + 'px "' + font + '"';
+    drawWrappedText(project.caption, (project.captionX || 12) * scale,
+      top + (project.captionY || 40) * scale,
+      (project.captionWidth || 240) * scale, fontSize);
   }
   ctx.restore();
 }
@@ -314,7 +322,16 @@ window.exportAnimatedMeme = async function (json) {
             }
           }
         } : (meta || {});
-        muxer.addVideoChunk(chunk, safeMeta);
+        // Chromium may omit EncodedVideoChunk.duration, but mp4-muxer
+        // requires a finite non-negative sample duration.
+        const duration = Number.isFinite(chunk.duration) && chunk.duration >= 0
+          ? chunk.duration : Math.round(1000000 / 30);
+        const encoded = new Uint8Array(chunk.byteLength);
+        chunk.copyTo(encoded);
+        const fixedChunk = new EncodedVideoChunk({
+          type: chunk.type, timestamp: chunk.timestamp, duration, data: encoded
+        });
+        muxer.addVideoChunk(fixedChunk, safeMeta);
       } catch (error) { failure = error; }
     },
     error: error => { failure = error; }
@@ -335,7 +352,7 @@ window.exportAnimatedMeme = async function (json) {
       if (failure) throw failure;
       const timeUs = Math.round(i * 1000000 / fps);
       drawMemeFrame(ctx, project, stickers, timeUs, width, height);
-      const frame = new VideoFrame(canvas, { timestamp: timeUs });
+      const frame = new VideoFrame(canvas, { timestamp: timeUs, duration: Math.round(1000000 / fps) });
       encoder.encode(frame, { keyFrame: i % (fps * 2) === 0 });
       frame.close();
       if (encoder.encodeQueueSize > 8) await new Promise(resolve => setTimeout(resolve, 10));

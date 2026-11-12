@@ -54,6 +54,26 @@ class StickerLayer {
   );
 }
 
+class MemeTextLayer {
+  MemeTextLayer({String text = '', this.x = 40, this.y = 40,
+    this.width = 200, this.fontSize = 28})
+      : controller = TextEditingController(text: text);
+  final TextEditingController controller;
+  double x, y, width, fontSize;
+  Map<String, dynamic> toJson() => {
+    'text': controller.text, 'x': x, 'y': y,
+    'width': width, 'fontSize': fontSize,
+  };
+  factory MemeTextLayer.fromJson(Map<String, dynamic> json) => MemeTextLayer(
+    text: json['text'] as String? ?? '',
+    x: (json['x'] as num?)?.toDouble() ?? 40,
+    y: (json['y'] as num?)?.toDouble() ?? 40,
+    width: (json['width'] as num?)?.toDouble() ?? 200,
+    fontSize: (json['fontSize'] as num?)?.toDouble() ?? 28,
+  );
+  void dispose() => controller.dispose();
+}
+
 class MemeEditor extends StatefulWidget {
   const MemeEditor({super.key});
   @override
@@ -62,6 +82,8 @@ class MemeEditor extends StatefulWidget {
 
 class _MemeEditorState extends State<MemeEditor> {
   final layers = <StickerLayer>[];
+  final textLayers = <MemeTextLayer>[];
+  int? selectedText;
   final caption = TextEditingController();
   final boundary = GlobalKey();
   final focus = FocusNode();
@@ -353,6 +375,7 @@ class _MemeEditorState extends State<MemeEditor> {
     'captionSize': captionSize, 'captionFont': captionFont,
     'captionWidth': captionWidth, 'captionAlign': captionAlign.name,
     'layers': layers.map((layer) => layer.toJson()).toList(),
+    'textLayers': textLayers.map((layer) => layer.toJson()).toList(),
   };
 
   Map<String, dynamic> allProjects() {
@@ -381,7 +404,19 @@ class _MemeEditorState extends State<MemeEditor> {
     setState(() {
       layers..clear()..addAll((data['layers'] as List).map(
         (e) => StickerLayer.fromJson(Map<String, dynamic>.from(e as Map))));
-      caption.text = data['caption'] as String? ?? '';
+      for (final layer in textLayers) { layer.dispose(); }
+      textLayers.clear();
+      if (data['textLayers'] is List) {
+        textLayers.addAll((data['textLayers'] as List).map((e) =>
+          MemeTextLayer.fromJson(Map<String, dynamic>.from(e as Map))));
+      } else if ((data['caption'] as String? ?? '').isNotEmpty) {
+        textLayers.add(MemeTextLayer(text: data['caption'] as String,
+          x: (data['captionX'] as num?)?.toDouble() ?? 12,
+          y: (data['captionY'] as num?)?.toDouble() ?? 40,
+          fontSize: (data['captionSize'] as num?)?.toDouble() ?? 28));
+      }
+      selectedText = null;
+      caption.text = '';
       background = Color(data['background'] as int);
       textColor = Color(data['textColor'] as int);
       captionX = (data['captionX'] as num?)?.toDouble() ?? 12;
@@ -418,6 +453,9 @@ class _MemeEditorState extends State<MemeEditor> {
 
   void newProject() => setState(() {
     layers.clear();
+    for (final layer in textLayers) { layer.dispose(); }
+    textLayers.clear();
+    selectedText = null;
     caption.clear();
     projectName = null;
     selected = null;
@@ -434,6 +472,7 @@ class _MemeEditorState extends State<MemeEditor> {
   @override
   void dispose() {
     pasteSubscription?.cancel();
+    for (final layer in textLayers) { layer.dispose(); }
     caption.dispose();
     focus.dispose();
     super.dispose();
@@ -477,64 +516,74 @@ class _MemeEditorState extends State<MemeEditor> {
                     ),
                   ),
                 ),
-              Positioned(
-                left: captionX.clamp(0, math.max(0, constraints.maxWidth - 30)),
-                top: captionY.clamp(0, math.max(0, constraints.maxHeight - 30)),
-                child: GestureDetector(
-                  behavior: HitTestBehavior.translucent,
-                  onPanUpdate: (details) => setState(() {
-                    captionX = (captionX + details.delta.dx).clamp(0, math.max(0, constraints.maxWidth - 30));
-                    captionY = (captionY + details.delta.dy).clamp(0, math.max(0, constraints.maxHeight - 30));
-                  }),
+              for (var i = 0; i < textLayers.length; i++)
+                Positioned(
+                  left: textLayers[i].x,
+                  top: textLayers[i].y,
                   child: Container(
-                    width: captionWidth.clamp(40, math.max(40, constraints.maxWidth - captionX)),
-                    decoration: BoxDecoration(border: Border.all(color: Colors.purpleAccent.withValues(alpha: 0.5))),
-                    child: Text(caption.text, softWrap: true, textAlign: captionAlign,
-                      style: TextStyle(color: textColor, fontSize: captionSize,
-                        fontFamily: captionFont, fontWeight: captionFont == 'Arial' ? FontWeight.w400 : FontWeight.w900)),
+                    width: textLayers[i].width,
+                    decoration: BoxDecoration(border: Border.all(
+                      color: selectedText == i ? Colors.purpleAccent : Colors.transparent)),
+                    child: Stack(clipBehavior: Clip.none, children: [
+                      Padding(padding: const EdgeInsets.only(left: 8, top: 22, right: 8, bottom: 10),
+                        child: TextField(
+                          controller: textLayers[i].controller,
+                          onTap: () => setState(() { selectedText = i; selected = null; }),
+                          onChanged: (_) => setState(() {}),
+                          keyboardType: TextInputType.multiline,
+                          maxLines: null,
+                          style: TextStyle(color: textColor, fontSize: textLayers[i].fontSize,
+                            fontFamily: captionFont),
+                          decoration: const InputDecoration(isDense: true,
+                            border: InputBorder.none, hintText: 'Type text...'),
+                        )),
+                      Positioned(top: 0, left: 0, right: 0,
+                        child: GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTap: () => setState(() => selectedText = i),
+                          onPanUpdate: (d) => setState(() {
+                            textLayers[i].x = (textLayers[i].x + d.delta.dx)
+                              .clamp(0, math.max(0, constraints.maxWidth - 40));
+                            textLayers[i].y = (textLayers[i].y + d.delta.dy)
+                              .clamp(0, math.max(0, constraints.maxHeight - 40));
+                          }),
+                          child: Container(height: 20, color: Colors.purpleAccent.withValues(alpha: 0.18),
+                            child: const Icon(Icons.drag_indicator, size: 15)),
+                        )),
+                      Positioned(right: -7, bottom: -7,
+                        child: GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onPanUpdate: (d) => setState(() {
+                            final oldWidth = textLayers[i].width;
+                            textLayers[i].width = (oldWidth + d.delta.dx)
+                              .clamp(70, math.max(70, constraints.maxWidth - textLayers[i].x));
+                            final ratio = textLayers[i].width / oldWidth;
+                            textLayers[i].fontSize =
+                              (textLayers[i].fontSize * ratio).clamp(10, 120);
+                          }),
+                          child: Container(width: 28, height: 28,
+                            color: Colors.purpleAccent,
+                            child: const Icon(Icons.open_in_full, size: 17)),
+                        )),
+                    ]),
                   ),
                 ),
-              ),
             ]),
           ));
         }),
       ))),
       Padding(padding: const EdgeInsets.all(12), child: Column(children: [
-        TextField(controller: caption, focusNode: focus,
-          keyboardType: TextInputType.multiline, minLines: 2, maxLines: 4,
-          onChanged: (_) => setState(() {}),
-          decoration: const InputDecoration(labelText: 'Meme caption',
-            border: OutlineInputBorder())),
-        Row(children: [
-          const Text('Font size'),
-          Expanded(child: Slider(min: 12, max: 72, value: captionSize,
-            onChanged: (value) => setState(() => captionSize = value))),
-          Text(captionSize.round().toString()),
-          const SizedBox(width: 8),
-          DropdownButton<String>(value: captionFont,
-            items: const ['Roboto', 'Arial', 'Georgia', 'Courier New', 'Times New Roman']
-              .map((font) => DropdownMenuItem(value: font, child: Text(font))).toList(),
-            onChanged: (font) { if (font != null) setState(() => captionFont = font); }),
-        ]),
-        Row(children: [
-          const Text('Text box width'),
-          Expanded(child: Slider(min: 60, max: math.max(60, canvasWidth),
-            value: captionWidth.clamp(60, math.max(60, canvasWidth)),
-            onChanged: (value) => setState(() => captionWidth = value))),
-          Text(captionWidth.round().toString()),
-          const SizedBox(width: 8),
-          DropdownButton<TextAlign>(value: captionAlign,
-            items: const [
-              DropdownMenuItem(value: TextAlign.left, child: Text('Left')),
-              DropdownMenuItem(value: TextAlign.center, child: Text('Centre')),
-              DropdownMenuItem(value: TextAlign.right, child: Text('Right')),
-            ],
-            onChanged: (value) { if (value != null) setState(() => captionAlign = value); }),
-        ]),
         const SizedBox(height: 10),
         SingleChildScrollView(scrollDirection: Axis.horizontal, child: Row(children: [
           FilledButton.icon(onPressed: importSticker,
             icon: const Icon(Icons.add_photo_alternate), label: const Text('Add sticker')),
+          const SizedBox(width: 8),
+          FilledButton.icon(onPressed: () => setState(() {
+            textLayers.add(MemeTextLayer(
+              x: 35, y: 35, width: math.min(220, canvasWidth - 35)));
+            selectedText = textLayers.length - 1;
+            selected = null;
+          }), icon: const Icon(Icons.text_fields), label: const Text('Add text')),
           const SizedBox(width: 8),
           OutlinedButton(onPressed: pasteSticker, child: const Text('Paste')),
           OutlinedButton(onPressed: showStickerLibrary, child: const Text('My stickers')),
@@ -553,6 +602,10 @@ class _MemeEditorState extends State<MemeEditor> {
             child: const Text('Black / White BG')),
           OutlinedButton(onPressed: chooseTextColor,
             child: const Text('Text colour')),
+          OutlinedButton(onPressed: selectedText == null ? null : () => setState(() {
+            textLayers.removeAt(selectedText!).dispose();
+            selectedText = null;
+          }), child: const Text('Delete text')),
           OutlinedButton(onPressed: selected == null ? null : () => setState(() {
             layers.removeAt(selected!);
             selected = null;
