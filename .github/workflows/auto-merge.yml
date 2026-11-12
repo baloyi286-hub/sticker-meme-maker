@@ -1,0 +1,48 @@
+name: Auto-merge passing pull requests
+on:
+  workflow_run:
+    workflows: ["Flutter Web CI"]
+    types: [completed]
+permissions:
+  contents: write
+  pull-requests: write
+jobs:
+  merge:
+    if: ${{ github.event.workflow_run.event == 'pull_request' && github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Merge verified same-repository pull request into main
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const run = context.payload.workflow_run;
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const associated = await github.paginate(
+              github.rest.repos.listPullRequestsAssociatedWithCommit,
+              { owner, repo, commit_sha: run.head_sha }
+            );
+            for (const pr of associated) {
+              if (pr.state !== 'open' || pr.base.ref !== 'main') continue;
+              // Never run privileged auto-merge on forked pull requests.
+              if (pr.head.repo?.full_name !== `${owner}/${repo}`) continue;
+              if (pr.head.sha !== run.head_sha) continue;
+              // Require the current PR head to match the successful CI run.
+              const checks = await github.rest.checks.listForRef({
+                owner, repo, ref: pr.head.sha
+              });
+              const flutterChecks = checks.data.check_runs.filter(
+                check => check.name === 'build' && check.app?.slug === 'github-actions'
+              );
+              if (!flutterChecks.some(check => check.conclusion === 'success')) continue;
+              try {
+                await github.rest.pulls.merge({
+                  owner, repo, pull_number: pr.number,
+                  merge_method: 'squash', sha: pr.head.sha
+                });
+                core.info(`Merged PR #${pr.number} into main`);
+              } catch (error) {
+                core.warning(`PR #${pr.number} was not merged: ${error.message}`);
+              }
+            }
