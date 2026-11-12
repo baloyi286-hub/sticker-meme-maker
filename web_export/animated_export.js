@@ -282,9 +282,9 @@ function drawMemeFrame(ctx, project, stickers, timeUs, width, height) {
   ctx.textAlign = 'left';
   const drawWrappedText = (value, x, y, maxWidth, fontSize) => {
     let row = 0;
-    for (const paragraph of value.split('\\n')) {
+    for (const paragraph of value.split('\n')) {
       let line = '';
-      for (const word of paragraph.split(/\\s+/).filter(Boolean)) {
+      for (const word of paragraph.split(/\s+/).filter(Boolean)) {
         const next = line ? line + ' ' + word : word;
         if (line && ctx.measureText(next).width > maxWidth) {
           ctx.fillText(line, x, y + row++ * fontSize * 1.2);
