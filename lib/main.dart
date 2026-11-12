@@ -348,7 +348,10 @@ class _MemeEditorState extends State<MemeEditor> {
         child: Wrap(spacing: 14, runSpacing: 14, children: [
           for (final color in colors)
             InkWell(onTap: () {
-              setState(() => textColor = color);
+              setState(() {
+                textColor = color;
+                if (selectedText != null) textLayers[selectedText!].color = color.toARGB32();
+              });
               Navigator.pop(sheetContext);
             }, child: CircleAvatar(backgroundColor: color, radius: 22,
               child: textColor == color ? const Icon(Icons.check, color: Colors.grey) : null)),
@@ -382,7 +385,7 @@ class _MemeEditorState extends State<MemeEditor> {
 
   Future<void> exportPng() async {
     try {
-      setState(() => selected = null);
+      setState(() { selected = null; selectedText = null; editingText = false; });
       await WidgetsBinding.instance.endOfFrame;
       final render = boundary.currentContext?.findRenderObject() as RenderRepaintBoundary?;
       if (render == null) return;
