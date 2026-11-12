@@ -8,6 +8,7 @@ import 'dart:ui' as ui;
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter/rendering.dart';
 
 @JS('uploadSharedSticker')
@@ -99,6 +100,21 @@ class _MemeEditorState extends State<MemeEditor> {
   int? selectedText;
   bool editingText = false;
   final textFocus = FocusNode();
+  TextStyle memeFontStyle(MemeTextLayer layer) {
+    final fontName = switch (layer.font) {
+      'Arial' => 'Open Sans',
+      'Georgia' => 'Lora',
+      'Courier New' => 'Roboto Mono',
+      'Times New Roman' => 'Merriweather',
+      final String name => name,
+    };
+    return GoogleFonts.getFont(fontName,
+      color: Color(layer.color), fontSize: layer.fontSize,
+      fontWeight: layer.bold ? FontWeight.bold : FontWeight.normal,
+      fontStyle: layer.italic ? FontStyle.italic : FontStyle.normal,
+      decoration: layer.underline ? TextDecoration.underline : TextDecoration.none);
+  }
+
   void finishTextEditing() {
     textFocus.unfocus();
     setState(() {
@@ -577,13 +593,7 @@ class _MemeEditorState extends State<MemeEditor> {
                                 textAlign: TextAlign.values.firstWhere(
                                   (a) => a.name == textLayers[i].align,
                                   orElse: () => TextAlign.left),
-                                style: TextStyle(color: Color(textLayers[i].color),
-                                  fontSize: textLayers[i].fontSize,
-                                  fontFamily: textLayers[i].font,
-                                  fontWeight: textLayers[i].bold ? FontWeight.bold : FontWeight.normal,
-                                  fontStyle: textLayers[i].italic ? FontStyle.italic : FontStyle.normal,
-                                  decoration: textLayers[i].underline
-                                    ? TextDecoration.underline : TextDecoration.none),
+                                style: memeFontStyle(textLayers[i]),
                                 decoration: const InputDecoration(isDense: true,
                                   border: InputBorder.none, hintText: 'Type text...'))
                             : GestureDetector(
@@ -595,13 +605,7 @@ class _MemeEditorState extends State<MemeEditor> {
                                   textAlign: TextAlign.values.firstWhere(
                                     (a) => a.name == textLayers[i].align,
                                     orElse: () => TextAlign.left),
-                                  style: TextStyle(color: Color(textLayers[i].color),
-                                    fontSize: textLayers[i].fontSize,
-                                    fontFamily: textLayers[i].font,
-                                    fontWeight: textLayers[i].bold ? FontWeight.bold : FontWeight.normal,
-                                    fontStyle: textLayers[i].italic ? FontStyle.italic : FontStyle.normal,
-                                    decoration: textLayers[i].underline
-                                      ? TextDecoration.underline : TextDecoration.none)))),
+                                  style: memeFontStyle(textLayers[i])))),
                         if (selectedText == i)
                           Positioned(top: 0, left: 0, right: 0,
                             child: GestureDetector(
@@ -653,8 +657,14 @@ class _MemeEditorState extends State<MemeEditor> {
               IconButton(tooltip: 'Text colour', onPressed: chooseTextColor,
                 icon: const Icon(Icons.format_color_text)),
               DropdownButton<String>(
-                value: textLayers[selectedText!].font,
-                items: const ['Roboto', 'Arial', 'Georgia', 'Courier New', 'Times New Roman']
+                value: switch (textLayers[selectedText!].font) {
+                  'Arial' => 'Open Sans',
+                  'Georgia' => 'Lora',
+                  'Courier New' => 'Roboto Mono',
+                  'Times New Roman' => 'Merriweather',
+                  final String name => name,
+                },
+                items: const ['Roboto', 'Open Sans', 'Lora', 'Roboto Mono', 'Merriweather']
                   .map((font) => DropdownMenuItem(value: font, child: Text(font))).toList(),
                 onChanged: (font) { if (font != null) setState(() =>
                   textLayers[selectedText!].font = font); }),
