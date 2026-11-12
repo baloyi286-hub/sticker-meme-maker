@@ -265,10 +265,22 @@ function drawMemeFrame(ctx, project, stickers, timeUs, width, height) {
   if (Array.isArray(project.textLayers)) {
     for (const layer of project.textLayers) {
       const fontSize = (layer.fontSize || 28) * scale;
-      ctx.font = fontSize + 'px "' + font + '"';
+      ctx.save();
+      ctx.fillStyle = '#' + ((layer.color ?? project.textColor) >>> 0)
+        .toString(16).padStart(8, '0').slice(2);
+      ctx.textAlign = layer.align || 'left';
+      const style = (layer.italic ? 'italic ' : '') + (layer.bold ? 'bold ' : '');
+      ctx.font = style + fontSize + 'px "' + (layer.font || font).replace(/"/g, '') + '"';
+      const boxX = (layer.x + 8) * scale;
+      const boxY = top + (layer.y + 22) * scale;
+      const boxWidth = Math.max(20, (layer.width - 16) * scale);
+      ctx.translate(boxX + boxWidth / 2, boxY);
+      ctx.rotate(layer.angle || 0);
+      ctx.translate(-(boxX + boxWidth / 2), -boxY);
       drawWrappedText(layer.text || '', (layer.x + 8) * scale,
         top + (layer.y + 22) * scale,
         Math.max(20, (layer.width - 16) * scale), fontSize);
+      ctx.restore();
     }
   } else if (project.caption) {
     const fontSize = (project.captionSize || 28) * scale;

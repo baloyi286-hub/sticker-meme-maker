@@ -56,13 +56,20 @@ class StickerLayer {
 
 class MemeTextLayer {
   MemeTextLayer({String text = '', this.x = 40, this.y = 40,
-    this.width = 200, this.fontSize = 28})
+    this.width = 200, this.fontSize = 28, this.angle = 0, this.font = 'Arial',
+    this.color = 0xff000000, this.align = 'left', this.bold = false,
+    this.italic = false, this.underline = false})
       : controller = TextEditingController(text: text);
   final TextEditingController controller;
-  double x, y, width, fontSize;
+  double x, y, width, fontSize, angle;
+  String font, align;
+  int color;
+  bool bold, italic, underline;
   Map<String, dynamic> toJson() => {
     'text': controller.text, 'x': x, 'y': y,
-    'width': width, 'fontSize': fontSize,
+    'width': width, 'fontSize': fontSize, 'angle': angle,
+    'font': font, 'color': color, 'align': align,
+    'bold': bold, 'italic': italic, 'underline': underline,
   };
   factory MemeTextLayer.fromJson(Map<String, dynamic> json) => MemeTextLayer(
     text: json['text'] as String? ?? '',
@@ -70,6 +77,12 @@ class MemeTextLayer {
     y: (json['y'] as num?)?.toDouble() ?? 40,
     width: (json['width'] as num?)?.toDouble() ?? 200,
     fontSize: (json['fontSize'] as num?)?.toDouble() ?? 28,
+    angle: (json['angle'] as num?)?.toDouble() ?? 0,
+    font: json['font'] as String? ?? 'Arial',
+    color: (json['color'] as num?)?.toInt() ?? 0xff000000,
+    align: json['align'] as String? ?? 'left',
+    bold: json['bold'] == true, italic: json['italic'] == true,
+    underline: json['underline'] == true,
   );
   void dispose() => controller.dispose();
 }
@@ -84,6 +97,19 @@ class _MemeEditorState extends State<MemeEditor> {
   final layers = <StickerLayer>[];
   final textLayers = <MemeTextLayer>[];
   int? selectedText;
+  bool editingText = false;
+  final textFocus = FocusNode();
+  void finishTextEditing() {
+    textFocus.unfocus();
+    setState(() {
+      editingText = false;
+      if (selectedText != null && textLayers[selectedText!].controller.text.trim().isEmpty) {
+        textLayers.removeAt(selectedText!).dispose();
+      }
+      selectedText = null;
+      selected = null;
+    });
+  }
   final caption = TextEditingController();
   final boundary = GlobalKey();
   final focus = FocusNode();
@@ -146,6 +172,8 @@ class _MemeEditorState extends State<MemeEditor> {
     setState(() {
       layers.add(StickerLayer(bytes, name: name));
       selected = layers.length - 1;
+      selectedText = null;
+      editingText = false;
     });
   }
 
@@ -320,7 +348,10 @@ class _MemeEditorState extends State<MemeEditor> {
         child: Wrap(spacing: 14, runSpacing: 14, children: [
           for (final color in colors)
             InkWell(onTap: () {
-              setState(() => textColor = color);
+              setState(() {
+                textColor = color;
+                if (selectedText != null) textLayers[selectedText!].color = color.toARGB32();
+              });
               Navigator.pop(sheetContext);
             }, child: CircleAvatar(backgroundColor: color, radius: 22,
               child: textColor == color ? const Icon(Icons.check, color: Colors.grey) : null)),
@@ -354,7 +385,7 @@ class _MemeEditorState extends State<MemeEditor> {
 
   Future<void> exportPng() async {
     try {
-      setState(() => selected = null);
+      setState(() { selected = null; selectedText = null; editingText = false; });
       await WidgetsBinding.instance.endOfFrame;
       final render = boundary.currentContext?.findRenderObject() as RenderRepaintBoundary?;
       if (render == null) return;
@@ -416,6 +447,7 @@ class _MemeEditorState extends State<MemeEditor> {
           fontSize: (data['captionSize'] as num?)?.toDouble() ?? 28));
       }
       selectedText = null;
+      editingText = false;
       caption.text = '';
       background = Color(data['background'] as int);
       textColor = Color(data['textColor'] as int);
@@ -456,6 +488,7 @@ class _MemeEditorState extends State<MemeEditor> {
     for (final layer in textLayers) { layer.dispose(); }
     textLayers.clear();
     selectedText = null;
+    editingText = false;
     caption.clear();
     projectName = null;
     selected = null;
@@ -475,12 +508,15 @@ class _MemeEditorState extends State<MemeEditor> {
     for (final layer in textLayers) { layer.dispose(); }
     caption.dispose();
     focus.dispose();
+    textFocus.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(title: Text(projectName ?? 'Sticker Meme Maker'), actions: [
+      IconButton(tooltip: 'Paste sticker', onPressed: pasteSticker,
+        icon: const Icon(Icons.content_paste)),
       IconButton(tooltip: 'My stickers', onPressed: showStickerLibrary,
         icon: const Icon(Icons.collections_bookmark)),
       IconButton(tooltip: 'New meme', onPressed: newProject, icon: const Icon(Icons.add)),
@@ -495,11 +531,13 @@ class _MemeEditorState extends State<MemeEditor> {
           return RepaintBoundary(key: boundary, child: Container(
             color: background,
             child: Stack(clipBehavior: Clip.hardEdge, children: [
+              Positioned.fill(child: GestureDetector(behavior: HitTestBehavior.opaque,
+                onTap: finishTextEditing)),
               for (var i = 0; i < layers.length; i++)
                 Positioned(
                   left: layers[i].x, top: layers[i].y,
                   child: GestureDetector(
-                    onTap: () => setState(() => selected = i),
+                    onTap: () => setState(() { selected = i; selectedText = null; editingText = false; }),
                     onPanUpdate: (details) => setState(() {
                       layers[i].x = (layers[i].x + details.delta.dx).clamp(0, math.max(0, constraints.maxWidth - 30));
                       layers[i].y = (layers[i].y + details.delta.dy).clamp(0, math.max(0, constraints.maxHeight - 30));
@@ -518,103 +556,174 @@ class _MemeEditorState extends State<MemeEditor> {
                 ),
               for (var i = 0; i < textLayers.length; i++)
                 Positioned(
-                  left: textLayers[i].x,
-                  top: textLayers[i].y,
-                  child: Container(
-                    width: textLayers[i].width,
-                    decoration: BoxDecoration(border: Border.all(
-                      color: selectedText == i ? Colors.purpleAccent : Colors.transparent)),
-                    child: Stack(clipBehavior: Clip.none, children: [
-                      Padding(padding: const EdgeInsets.only(left: 8, top: 22, right: 8, bottom: 10),
-                        child: TextField(
-                          controller: textLayers[i].controller,
-                          onTap: () => setState(() { selectedText = i; selected = null; }),
-                          onChanged: (_) => setState(() {}),
-                          keyboardType: TextInputType.multiline,
-                          maxLines: null,
-                          style: TextStyle(color: textColor, fontSize: textLayers[i].fontSize,
-                            fontFamily: captionFont),
-                          decoration: const InputDecoration(isDense: true,
-                            border: InputBorder.none, hintText: 'Type text...'),
-                        )),
-                      Positioned(top: 0, left: 0, right: 0,
-                        child: GestureDetector(
-                          behavior: HitTestBehavior.opaque,
-                          onTap: () => setState(() => selectedText = i),
-                          onPanUpdate: (d) => setState(() {
-                            textLayers[i].x = (textLayers[i].x + d.delta.dx)
-                              .clamp(0, math.max(0, constraints.maxWidth - 40));
-                            textLayers[i].y = (textLayers[i].y + d.delta.dy)
-                              .clamp(0, math.max(0, constraints.maxHeight - 40));
-                          }),
-                          child: Container(height: 20, color: Colors.purpleAccent.withValues(alpha: 0.18),
-                            child: const Icon(Icons.drag_indicator, size: 15)),
-                        )),
-                      Positioned(right: -7, bottom: -7,
-                        child: GestureDetector(
-                          behavior: HitTestBehavior.opaque,
-                          onPanUpdate: (d) => setState(() {
-                            final oldWidth = textLayers[i].width;
-                            textLayers[i].width = (oldWidth + d.delta.dx)
-                              .clamp(70, math.max(70, constraints.maxWidth - textLayers[i].x));
-                            final ratio = textLayers[i].width / oldWidth;
-                            textLayers[i].fontSize =
-                              (textLayers[i].fontSize * ratio).clamp(10, 120);
-                          }),
-                          child: Container(width: 28, height: 28,
-                            color: Colors.purpleAccent,
-                            child: const Icon(Icons.open_in_full, size: 17)),
-                        )),
-                    ]),
+                  left: textLayers[i].x, top: textLayers[i].y,
+                  child: Transform.rotate(
+                    angle: textLayers[i].angle,
+                    child: Container(
+                      width: textLayers[i].width,
+                      decoration: BoxDecoration(border: Border.all(
+                        color: selectedText == i ? Colors.purpleAccent : Colors.transparent)),
+                      child: Stack(clipBehavior: Clip.none, children: [
+                        Padding(padding: EdgeInsets.only(left: 8,
+                          top: 22, right: 8, bottom: 10),
+                          child: editingText && selectedText == i
+                            ? TextField(
+                                controller: textLayers[i].controller,
+                                focusNode: textFocus,
+                                onChanged: (_) => setState(() {}),
+                                keyboardType: TextInputType.multiline,
+                                maxLines: null,
+                                textAlign: TextAlign.values.firstWhere(
+                                  (a) => a.name == textLayers[i].align,
+                                  orElse: () => TextAlign.left),
+                                style: TextStyle(color: Color(textLayers[i].color),
+                                  fontSize: textLayers[i].fontSize,
+                                  fontFamily: textLayers[i].font,
+                                  fontWeight: textLayers[i].bold ? FontWeight.bold : FontWeight.normal,
+                                  fontStyle: textLayers[i].italic ? FontStyle.italic : FontStyle.normal,
+                                  decoration: textLayers[i].underline
+                                    ? TextDecoration.underline : TextDecoration.none),
+                                decoration: const InputDecoration(isDense: true,
+                                  border: InputBorder.none, hintText: 'Type text...'))
+                            : GestureDetector(
+                                behavior: HitTestBehavior.opaque,
+                                onTap: () => setState(() {
+                                  selectedText = i; selected = null; editingText = true;
+                                }),
+                                child: Text(textLayers[i].controller.text,
+                                  textAlign: TextAlign.values.firstWhere(
+                                    (a) => a.name == textLayers[i].align,
+                                    orElse: () => TextAlign.left),
+                                  style: TextStyle(color: Color(textLayers[i].color),
+                                    fontSize: textLayers[i].fontSize,
+                                    fontFamily: textLayers[i].font,
+                                    fontWeight: textLayers[i].bold ? FontWeight.bold : FontWeight.normal,
+                                    fontStyle: textLayers[i].italic ? FontStyle.italic : FontStyle.normal,
+                                    decoration: textLayers[i].underline
+                                      ? TextDecoration.underline : TextDecoration.none)))),
+                        if (selectedText == i)
+                          Positioned(top: 0, left: 0, right: 0,
+                            child: GestureDetector(
+                              behavior: HitTestBehavior.opaque,
+                              onPanUpdate: (d) => setState(() {
+                                textLayers[i].x = (textLayers[i].x + d.delta.dx)
+                                  .clamp(0, math.max(0, constraints.maxWidth - 40));
+                                textLayers[i].y = (textLayers[i].y + d.delta.dy)
+                                  .clamp(0, math.max(0, constraints.maxHeight - 40));
+                              }),
+                              child: Container(height: 20,
+                                color: Colors.purpleAccent.withValues(alpha: 0.18),
+                                child: const Icon(Icons.drag_indicator, size: 15)))),
+                        if (selectedText == i)
+                          Positioned(right: -7, bottom: -7,
+                            child: GestureDetector(
+                              behavior: HitTestBehavior.opaque,
+                              onPanUpdate: (d) => setState(() {
+                                final oldWidth = textLayers[i].width;
+                                textLayers[i].width = (oldWidth + d.delta.dx)
+                                  .clamp(70, math.max(70, constraints.maxWidth - textLayers[i].x));
+                                textLayers[i].fontSize = (textLayers[i].fontSize *
+                                  textLayers[i].width / oldWidth).clamp(10, 120);
+                              }),
+                              child: Container(width: 28, height: 28,
+                                color: Colors.purpleAccent,
+                                child: const Icon(Icons.open_in_full, size: 17)))),
+                      ]),
+                    ),
                   ),
                 ),
             ]),
           ));
         }),
       ))),
-      Padding(padding: const EdgeInsets.all(12), child: Column(children: [
-        const SizedBox(height: 10),
+      Padding(padding: const EdgeInsets.all(8), child: Column(children: [
+        if (selectedText != null)
+          SingleChildScrollView(scrollDirection: Axis.horizontal,
+            child: Row(children: [
+              for (final alignment in ['left', 'center', 'right'])
+                IconButton(
+                  tooltip: 'Align $alignment',
+                  onPressed: () => setState(() => textLayers[selectedText!].align = alignment),
+                  icon: Icon(alignment == 'left' ? Icons.format_align_left :
+                    alignment == 'center' ? Icons.format_align_center : Icons.format_align_right),
+                  color: textLayers[selectedText!].align == alignment
+                    ? Colors.purpleAccent : null),
+              IconButton(tooltip: 'Text colour', onPressed: chooseTextColor,
+                icon: const Icon(Icons.format_color_text)),
+              DropdownButton<String>(
+                value: textLayers[selectedText!].font,
+                items: const ['Roboto', 'Arial', 'Georgia', 'Courier New', 'Times New Roman']
+                  .map((font) => DropdownMenuItem(value: font, child: Text(font))).toList(),
+                onChanged: (font) { if (font != null) setState(() =>
+                  textLayers[selectedText!].font = font); }),
+              IconButton(tooltip: 'Bold', icon: const Icon(Icons.format_bold),
+                color: textLayers[selectedText!].bold ? Colors.purpleAccent : null,
+                onPressed: () => setState(() =>
+                  textLayers[selectedText!].bold = !textLayers[selectedText!].bold)),
+              IconButton(tooltip: 'Italic', icon: const Icon(Icons.format_italic),
+                color: textLayers[selectedText!].italic ? Colors.purpleAccent : null,
+                onPressed: () => setState(() =>
+                  textLayers[selectedText!].italic = !textLayers[selectedText!].italic)),
+              IconButton(tooltip: 'Underline', icon: const Icon(Icons.format_underline),
+                color: textLayers[selectedText!].underline ? Colors.purpleAccent : null,
+                onPressed: () => setState(() =>
+                  textLayers[selectedText!].underline = !textLayers[selectedText!].underline)),
+            ])),
         SingleChildScrollView(scrollDirection: Axis.horizontal, child: Row(children: [
           FilledButton.icon(onPressed: importSticker,
             icon: const Icon(Icons.add_photo_alternate), label: const Text('Add sticker')),
           const SizedBox(width: 8),
           FilledButton.icon(onPressed: () => setState(() {
-            textLayers.add(MemeTextLayer(
-              x: 35, y: 35, width: math.min(220, canvasWidth - 35)));
+            textLayers.add(MemeTextLayer(x: 35, y: 35,
+              width: math.min(220, canvasWidth - 35)));
             selectedText = textLayers.length - 1;
             selected = null;
+            editingText = true;
           }), icon: const Icon(Icons.text_fields), label: const Text('Add text')),
           const SizedBox(width: 8),
-          OutlinedButton(onPressed: pasteSticker, child: const Text('Paste')),
-          OutlinedButton(onPressed: showStickerLibrary, child: const Text('My stickers')),
-          OutlinedButton(onPressed: selected == null ? null : () => setState(() => layers[selected!].size += 20), child: const Text('Larger')),
-          OutlinedButton(onPressed: selected == null ? null : () => setState(() => layers[selected!].size = (layers[selected!].size - 20).clamp(40, 500)), child: const Text('Smaller')),
-          OutlinedButton(onPressed: selected == null ? null : () => setState(() => layers[selected!].angle += math.pi / 8), child: const Text('Rotate')),
-          OutlinedButton(onPressed: selected == null ? null : () => setState(() {
-            final source = layers[selected!];
-            layers.add(StickerLayer(source.bytes, name: source.name,
-              x: source.x + 15, y: source.y + 15,
-              size: source.size, angle: source.angle));
-            selected = layers.length - 1;
-          }), child: const Text('Duplicate')),
-          OutlinedButton(onPressed: () => setState(() => background =
-            background == Colors.white ? Colors.black : Colors.white),
-            child: const Text('Black / White BG')),
-          OutlinedButton(onPressed: chooseTextColor,
-            child: const Text('Text colour')),
-          OutlinedButton(onPressed: selectedText == null ? null : () => setState(() {
-            textLayers.removeAt(selectedText!).dispose();
-            selectedText = null;
-          }), child: const Text('Delete text')),
-          OutlinedButton(onPressed: selected == null ? null : () => setState(() {
-            layers.removeAt(selected!);
-            selected = null;
-          }), child: const Text('Delete')),
-          FilledButton(onPressed: exportPng, child: const Text('Download PNG')),
+          FilledButton(onPressed: exportPng, child: const Text('Download As Image')),
+          const SizedBox(width: 8),
           FilledButton.icon(onPressed: exportingMp4 ? null : exportAnimatedMp4,
             icon: exportingMp4 ? const SizedBox(width: 16, height: 16,
               child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.movie),
-            label: Text(exportingMp4 ? 'Exporting MP4...' : 'Export Animated Meme → MP4')),
+            label: const Text('Download As Animation')),
+        ])),
+        SingleChildScrollView(scrollDirection: Axis.horizontal, child: Row(children: [
+          OutlinedButton(onPressed: selected == null && selectedText == null ? null :
+            () => setState(() {
+              if (selected != null) layers[selected!].angle += math.pi / 8;
+              if (selectedText != null) textLayers[selectedText!].angle += math.pi / 8;
+            }), child: const Text('Rotate')),
+          OutlinedButton(onPressed: selected == null && selectedText == null ? null :
+            () => setState(() {
+              if (selected != null) {
+                final source = layers[selected!];
+                layers.add(StickerLayer(source.bytes, name: source.name,
+                  x: source.x + 15, y: source.y + 15,
+                  size: source.size, angle: source.angle));
+                selected = layers.length - 1;
+              } else if (selectedText != null) {
+                final source = textLayers[selectedText!];
+                textLayers.add(MemeTextLayer(text: source.controller.text,
+                  x: source.x + 15, y: source.y + 15, width: source.width,
+                  fontSize: source.fontSize, angle: source.angle,
+                  font: source.font, color: source.color, align: source.align,
+                  bold: source.bold, italic: source.italic, underline: source.underline));
+                selectedText = textLayers.length - 1;
+              }
+            }), child: const Text('Duplicate')),
+          OutlinedButton(onPressed: selected == null && selectedText == null ? null :
+            () => setState(() {
+              if (selected != null) { layers.removeAt(selected!); selected = null; }
+              if (selectedText != null) {
+                textLayers.removeAt(selectedText!).dispose();
+                selectedText = null;
+                editingText = false;
+              }
+            }), child: const Text('Delete')),
+          OutlinedButton(onPressed: () => setState(() =>
+            background = background == Colors.white ? Colors.black : Colors.white),
+            child: const Text('Black / White BG')),
         ])),
       ])),
     ])),
