@@ -565,8 +565,7 @@ class _MemeEditorState extends State<MemeEditor> {
                         color: selectedText == i ? Colors.purpleAccent : Colors.transparent)),
                       child: Stack(clipBehavior: Clip.none, children: [
                         Padding(padding: EdgeInsets.only(left: 8,
-                          top: selectedText == i ? 22 : 0, right: 8,
-                          bottom: selectedText == i ? 10 : 0),
+                          top: 22, right: 8, bottom: 10),
                           child: editingText && selectedText == i
                             ? TextField(
                                 controller: textLayers[i].controller,
