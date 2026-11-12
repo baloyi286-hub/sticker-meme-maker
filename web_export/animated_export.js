@@ -157,7 +157,39 @@ async function prepareNativeSticker(layer) {
   return { frameAt() { return img; }, close() { URL.revokeObjectURL(url); } };
 }
 
+// Load the same web font used by Flutter before measuring and drawing text.
+// Without this, Safari silently substitutes a different font and changes wrapping.
+const exportFontFamilies = {
+  'Arial': 'Arimo', 'Georgia': 'Gelasio',
+  'Courier New': 'Cousine', 'Times New Roman': 'Tinos'
+};
+async function prepareExportFonts(project) {
+  const families = [...new Set((project.textLayers || [])
+    .map(layer => exportFontFamilies[layer.font] || layer.font || 'Roboto'))];
+  if (!families.length) return;
+  const cssUrl = 'https://fonts.googleapis.com/css2?' +
+    families.map(family => 'family=' + encodeURIComponent(family).replace(/%20/g, '+') +
+      ':ital,wght@0,400;0,700;1,400;1,700').join('&') + '&display=swap';
+  if (!document.getElementById('meme-export-fonts')) {
+    const link = document.createElement('link');
+    link.id = 'meme-export-fonts';
+    link.rel = 'stylesheet';
+    link.href = cssUrl;
+    document.head.appendChild(link);
+    await new Promise(resolve => {
+      link.onload = resolve;
+      link.onerror = resolve;
+      setTimeout(resolve, 5000);
+    });
+  }
+  await Promise.all(families.map(async family => {
+    try { await document.fonts.load('28px "' + family.replace(/"/g, '') + '"'); }
+    catch (_) { /* Keep export available even when fonts are offline. */ }
+  }));
+}
+
 async function recordMobileMeme(project, render) {
+  await prepareExportFonts(project);
   const mimeType = supportedMp4RecorderType();
   if (!mimeType) throw new Error('This mobile browser cannot record MP4. Try updating iOS.');
   const width = 720, height = 1280, fps = 30, seconds = 6;
@@ -270,12 +302,8 @@ function drawMemeFrame(ctx, project, stickers, timeUs, width, height) {
         .toString(16).padStart(8, '0').slice(2);
       ctx.textAlign = layer.align || 'left';
       const style = (layer.italic ? 'italic ' : '') + (layer.bold ? 'bold ' : '');
-      const compatibleFonts = {
-        'Arial': 'Arimo', 'Georgia': 'Gelasio',
-        'Courier New': 'Cousine', 'Times New Roman': 'Tinos'
-      };
       const selectedFamily = layer.font || font;
-      const renderFamily = compatibleFonts[selectedFamily] || selectedFamily;
+      const renderFamily = exportFontFamilies[selectedFamily] || selectedFamily;
       ctx.font = style + fontSize + 'px "' + renderFamily.replace(/"/g, '') + '"';
       const boxX = (layer.x + 8) * scale;
       const boxY = top + (layer.y + 22) * scale;
@@ -285,7 +313,7 @@ function drawMemeFrame(ctx, project, stickers, timeUs, width, height) {
       ctx.translate(-(boxX + boxWidth / 2), -boxY);
       drawWrappedText(layer.text || '', (layer.x + 8) * scale,
         top + (layer.y + 22) * scale,
-        Math.max(20, (layer.width - 16) * scale), fontSize);
+        Math.max(20, (layer.width - 16) * scale * 0.86), fontSize);
       ctx.restore();
     }
   } else if (project.caption) {
@@ -300,6 +328,7 @@ function drawMemeFrame(ctx, project, stickers, timeUs, width, height) {
 
 window.exportAnimatedMeme = async function (json) {
   const project = JSON.parse(json);
+  await prepareExportFonts(project);
   const needsNativeDecoder = project.layers.some(layer => {
     const type = imageMime(stickerBytes(layer.bytes));
     return type === 'image/webp' || type === 'image/gif';
