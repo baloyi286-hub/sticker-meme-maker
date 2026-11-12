@@ -811,6 +811,15 @@ class _MemeEditorState extends State<MemeEditor> {
                 selectedText = textLayers.length - 1;
               }
             }), child: const Text('Duplicate')),
+          OutlinedButton(onPressed: selected == null ? null : () => setState(() {
+            final sticker = layers[selected!];
+            sticker.size = (sticker.size + 20).clamp(40.0,
+              math.max(40.0, math.min(canvasWidth - sticker.x,
+                canvasWidth - sticker.y)));
+          }), child: const Text('Larger')),
+          OutlinedButton(onPressed: selected == null ? null : () => setState(() {
+            layers[selected!].size = (layers[selected!].size - 20).clamp(40.0, 500.0);
+          }), child: const Text('Smaller')),
           OutlinedButton(onPressed: selected == null && selectedText == null ? null :
             () => setState(() {
               if (selected != null) { layers.removeAt(selected!); selected = null; }
